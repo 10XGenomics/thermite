@@ -7,7 +7,7 @@ use bincode;
 use std::fs::{self, File};
 use std::io::prelude::*;
 
-use thermite_aligner::{index, aligner};
+use thermite_aligner::{aligner, index};
 
 fn main() -> Result<()> {
     let opts = ThermiteOpts::parse();
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
             let serialized_index = bincode::serialize(&index)?;
             let mut index_file = File::create(&index_opts.index)?;
             index_file.write_all(&serialized_index)?;
-        },
+        }
         SubCommand::Align(align_opts) => {
             let serialized_index = fs::read(&align_opts.index)?;
             let index = bincode::deserialize(&serialized_index)?;
@@ -34,7 +34,7 @@ fn main() -> Result<()> {
                 &align_opts.output,
                 align_opts.min_mem_len,
             )?;
-        },
+        }
     }
 
     Ok(())
