@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 use clap::Clap;
 
 use anyhow::{bail, Context, Result};
