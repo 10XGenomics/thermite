@@ -2,7 +2,7 @@
 
 use clap::Clap;
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 
 use bincode;
 
