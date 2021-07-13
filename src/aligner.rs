@@ -8,7 +8,12 @@ use std::io::BufWriter;
 use crate::aln_writer::*;
 use crate::index::*;
 
-pub fn align_reads(index: &Index, query_path: &str, output_path: &str, min_mem_len: usize) -> Result<()> {
+pub fn align_reads(
+    index: &Index,
+    query_path: &str,
+    output_path: &str,
+    min_mem_len: usize,
+) -> Result<()> {
     let mut reader = parse_fastx_file(query_path)?;
     let mut writer = BufWriter::new(File::create(output_path)?);
 
@@ -24,8 +29,16 @@ pub fn align_reads(index: &Index, query_path: &str, output_path: &str, min_mem_l
                 strand: mem_ref.strand,
                 target_name: &mem_ref.name,
                 target_len: mem_ref.len,
-                target_start: if mem_ref.strand { ref_idx } else { mem_ref.len - ref_idx - mem.len },
-                target_end: if mem_ref.strand { ref_idx + mem.len - 1 } else { mem_ref.len - 1 - ref_idx },
+                target_start: if mem_ref.strand {
+                    ref_idx
+                } else {
+                    mem_ref.len - ref_idx - mem.len
+                },
+                target_end: if mem_ref.strand {
+                    ref_idx + mem.len - 1
+                } else {
+                    mem_ref.len - 1 - ref_idx
+                },
                 num_match: mem.len,
                 num_match_gap: mem.len,
                 map_qual: 255,

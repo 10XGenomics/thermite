@@ -3,11 +3,11 @@ use anyhow::{bail, Result};
 use needletail::*;
 
 use bio::alphabets::dna;
-use bio::data_structures::bwt::{bwt, less, Occ, Less, BWT};
+use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::suffix_array::{suffix_array, RawSuffixArray};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Index {
@@ -63,7 +63,11 @@ impl Index {
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
-            let curr = Mem { ref_idx: forwards_idxs[0], query_idx: interval.1, len: interval.2 };
+            let curr = Mem {
+                ref_idx: forwards_idxs[0],
+                query_idx: interval.1,
+                len: interval.2,
+            };
             max_smem = match max_smem {
                 None => Some(curr),
                 Some(max) if curr.len > max.len => Some(curr),
@@ -76,7 +80,14 @@ impl Index {
 
     pub fn idx_to_ref(&self, idx: usize) -> (&Ref, usize) {
         let ref_idx = self.refs.partition_point(|x| x.end_idx <= idx);
-        (&self.refs[ref_idx], idx - if ref_idx == 0 { 0 } else { self.refs[ref_idx - 1].end_idx })
+        (
+            &self.refs[ref_idx],
+            idx - if ref_idx == 0 {
+                0
+            } else {
+                self.refs[ref_idx - 1].end_idx
+            },
+        )
     }
 }
 
