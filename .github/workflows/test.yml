@@ -10,6 +10,8 @@ jobs:
   Linux:
     runs-on: ubuntu-20.04
     steps:
+      - name: Checkout git repository
+        uses: actions/checkout@master
      - name: Install cargo/rustc
        run: |
          case $(rustc --version) in
