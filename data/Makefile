@@ -7,7 +7,7 @@ export PATH:=../target/debug:${PATH}
 ref=test_ref
 
 # The minimum seed length.
-l=3
+k=3
 
 SHELL=bash -e -o pipefail
 ifneq ($(shell command -v zsh),)
@@ -30,8 +30,8 @@ clean:
 
 # Index the reference genome.
 %.fasta.tai: %.fasta
-	thermite index $< $@
+	thermite index -o $@ $<
 
 # Align the query to the reference.
 %.paf: $(ref).fasta.tai %.fastq
-	thermite align -l$l $^ $@
+	thermite align -k$k -o $@ $^
