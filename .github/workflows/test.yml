@@ -1,0 +1,26 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  Linux:
+    runs-on: ubuntu-20.04
+    steps:
+     - name: Install cargo/rustc
+       run: |
+         case $(rustc --version) in
+           "rustc 1.47.0"*) ;;
+           *) rustup default 1.47.0
+              ;;
+         esac
+         rustup component add rustfmt
+         rustc --version
+         rustfmt --version
+     - name: Check rust formatting
+       run: cargo fmt -- --check
+     - name: Run cargo check
+       run: cargo check --all-targets
