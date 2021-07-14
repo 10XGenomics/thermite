@@ -4,6 +4,6 @@ RNA aligner in Rust.
 ## Running
 ```
 cd data
-cargo run -- index test_ref.fasta test_index.tai
-cargo run -- align test_index.tai test_query.fastq test_aln.paf
+cargo run -- index -o test_ref.fasta.tai test_ref.fasta
+cargo run -- align -k 3 -o test_query.paf test_ref.fasta.tai test_query.fastq
 ```
