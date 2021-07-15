@@ -33,6 +33,3 @@ lto = true
 
 [profile.test]
 opt-level = 3
-
-[features]
-cargo-features = ["resolver"]

@@ -3,8 +3,8 @@ use anyhow::Result;
 use needletail::*;
 
 use std::fs::File;
-use std::io::{self, BufWriter};
 use std::io::prelude::*;
+use std::io::{self, BufWriter};
 
 use crate::aln_writer::*;
 use crate::index::*;
