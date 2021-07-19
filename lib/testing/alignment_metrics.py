@@ -36,9 +36,7 @@ def main():
 
 def query_identical_to_reference(alignment: list) -> int:
     alignment = parse_alignment(alignment)
-    query_length = alignment.query_len
-    align_block_length = alignment.alignment_len
-    if query_length == align_block_length:
+    if alignment.query_len == alignment.alignment_len:
         return 1
     else:
         return 0
