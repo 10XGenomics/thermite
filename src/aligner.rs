@@ -2,9 +2,13 @@ use anyhow::Result;
 
 use needletail::*;
 
+use noodles::{sam, bam};
+
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
+use std::convert::TryFrom;
+use std::str;
 
 use crate::aln_writer::*;
 use crate::index::*;
@@ -13,11 +17,39 @@ pub fn align_reads(
     index: &Index,
     query_paths: &[String],
     output_path: &str,
+    output_fmt: OutputFormat,
     min_seed_len: usize,
 ) -> Result<()> {
-    let mut writer: Box<dyn Write> = match output_path {
+    let writer: Box<dyn Write> = match output_path {
         "-" => Box::new(BufWriter::new(io::stdout())),
         _ => Box::new(BufWriter::new(File::create(output_path)?)),
+    };
+    
+    let mut writer = match output_fmt {
+        OutputFormat::Bam | OutputFormat::Sam => {
+            let sam_refs = index.refs().into_iter()
+                .map(|r| (r.name.to_owned(), sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32).unwrap()))
+                .collect();
+            let sam_header = sam::Header::builder()
+                .set_reference_sequences(sam_refs)
+                .add_program(sam::header::Program::new("thermite"))
+                .build();
+
+            match output_fmt {
+                OutputFormat::Bam => {
+                    let mut w = bam::Writer::new(writer);
+                    w.write_header(&sam_header)?;
+                    OutputWriter::Bam(w, sam_header)
+                },
+                OutputFormat::Sam => {
+                    let mut w = sam::Writer::new(writer);
+                    w.write_header(&sam_header)?;
+                    OutputWriter::Sam(w)
+                },
+                _ => unreachable!(),
+            }
+        },
+        OutputFormat::Paf => OutputWriter::Paf(writer),
     };
 
     for query_path in query_paths {
@@ -28,31 +60,58 @@ pub fn align_reads(
 
             if let Some(mem) = index.longest_smem(&record.seq(), min_seed_len) {
                 let (mem_ref, ref_idx) = index.idx_to_ref(mem.ref_idx);
-
-                let paf = PafEntry {
-                    query_name: &record.id(),
-                    query_len: record.seq().len(),
-                    query_start: mem.query_idx,
-                    query_end: mem.query_idx + mem.len - 1,
-                    strand: mem_ref.strand,
-                    target_name: &mem_ref.name,
-                    target_len: mem_ref.len,
-                    target_start: if mem_ref.strand {
-                        ref_idx
-                    } else {
-                        mem_ref.len - ref_idx - mem.len
-                    },
-                    target_end: if mem_ref.strand {
-                        ref_idx + mem.len - 1
-                    } else {
-                        mem_ref.len - 1 - ref_idx
-                    },
-                    num_match: mem.len,
-                    num_match_gap: mem.len,
-                    map_qual: 255,
+                let query_start = mem.query_idx;
+                let query_end = mem.query_idx + mem.len - 1;
+                let target_start = if mem_ref.strand {
+                    ref_idx
+                } else {
+                    mem_ref.len - ref_idx - mem.len
+                };
+                let target_end = if mem_ref.strand {
+                    ref_idx + mem.len - 1
+                } else {
+                    mem_ref.len - 1 - ref_idx
                 };
 
-                write_paf(&mut writer, &paf)?;
+                match writer {
+                    OutputWriter::Bam(_, _) | OutputWriter::Sam(_) => {
+                        let flags = if mem_ref.strand { sam::record::Flags::empty() } else { sam::record::Flags::REVERSE_COMPLEMENTED };
+                        let read_name = str::from_utf8(record.id())?;
+                        let record = sam::Record::builder()
+                            .set_read_name(read_name.parse()?)
+                            .set_flags(flags)
+                            .set_reference_sequence_name(mem_ref.name.parse()?)
+                            .set_position(sam::record::Position::try_from(target_start as i32)?)
+                            .set_mapping_quality(sam::record::MappingQuality::from(255))
+                            .set_cigar(format!("{}M", mem_ref.len).parse()?)
+                            .set_template_length(mem_ref.len as i32)
+                            .build()?;
+
+                        match writer {
+                            OutputWriter::Bam(ref mut w, ref header) => w.write_sam_record(header.reference_sequences(), &record)?,
+                            OutputWriter::Sam(ref mut w) => w.write_record(&record)?,
+                            _ => unreachable!(),
+                        }
+                    },
+                    OutputWriter::Paf(ref mut w) => {
+                        let paf = PafEntry {
+                            query_name: &record.id(),
+                            query_len: record.seq().len(),
+                            query_start,
+                            query_end,
+                            strand: mem_ref.strand,
+                            target_name: mem_ref.name.as_bytes(),
+                            target_len: mem_ref.len,
+                            target_start,
+                            target_end,
+                            num_match: mem.len,
+                            num_match_gap: mem.len,
+                            map_qual: 255,
+                        };
+
+                        write_paf(w, &paf)?;
+                    },
+                }
             }
         }
     }
