@@ -1,6 +1,6 @@
 /target
 
-data/**.paf
-data/**.tai
 data/**.bam
+data/**.paf
 data/**.sam
+data/**.tai

@@ -20,7 +20,7 @@ pub fn align_reads(
     output_fmt: OutputFormat,
     min_seed_len: usize,
 ) -> Result<()> {
-    let writer: Box<dyn Write> = match output_path {
+    let output_writer: Box<dyn Write> = match output_path {
         "-" => Box::new(BufWriter::new(io::stdout())),
         _ => Box::new(BufWriter::new(File::create(output_path)?)),
     };
@@ -45,20 +45,20 @@ pub fn align_reads(
 
             match output_fmt {
                 OutputFormat::Bam => {
-                    let mut w = bam::Writer::new(writer);
+                    let mut w = bam::Writer::new(output_writer);
                     w.write_header(&sam_header)?;
                     w.write_reference_sequences(sam_header.reference_sequences())?;
                     OutputWriter::Bam(w, sam_header)
                 }
                 OutputFormat::Sam => {
-                    let mut w = sam::Writer::new(writer);
+                    let mut w = sam::Writer::new(output_writer);
                     w.write_header(&sam_header)?;
                     OutputWriter::Sam(w)
                 }
                 _ => unreachable!(),
             }
         }
-        OutputFormat::Paf => OutputWriter::Paf(writer),
+        OutputFormat::Paf => OutputWriter::Paf(output_writer),
     };
 
     for query_path in query_paths {
@@ -70,16 +70,16 @@ pub fn align_reads(
             if let Some(mem) = index.longest_smem(&record.seq(), min_seed_len) {
                 let (mem_ref, ref_idx) = index.idx_to_ref(mem.ref_idx);
                 let query_start = mem.query_idx;
-                let query_end = mem.query_idx + mem.len - 1;
+                let query_end = mem.query_idx + mem.len;
                 let target_start = if mem_ref.strand {
                     ref_idx
                 } else {
                     mem_ref.len - ref_idx - mem.len
                 };
                 let target_end = if mem_ref.strand {
-                    ref_idx + mem.len - 1
+                    ref_idx + mem.len
                 } else {
-                    mem_ref.len - 1 - ref_idx
+                    mem_ref.len - ref_idx
                 };
 
                 match writer {
