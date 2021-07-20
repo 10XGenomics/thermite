@@ -2,12 +2,12 @@ use anyhow::Result;
 
 use needletail::*;
 
-use noodles::{sam, bam};
+use noodles::{bam, sam};
 
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
-use std::convert::TryFrom;
 use std::str;
 
 use crate::aln_writer::*;
@@ -24,11 +24,19 @@ pub fn align_reads(
         "-" => Box::new(BufWriter::new(io::stdout())),
         _ => Box::new(BufWriter::new(File::create(output_path)?)),
     };
-    
+
     let mut writer = match output_fmt {
         OutputFormat::Bam | OutputFormat::Sam => {
-            let sam_refs = index.refs().into_iter()
-                .map(|r| (r.name.to_owned(), sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32).unwrap()))
+            let sam_refs = index
+                .refs()
+                .into_iter()
+                .map(|r| {
+                    (
+                        r.name.to_owned(),
+                        sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32)
+                            .unwrap(),
+                    )
+                })
                 .collect();
             let sam_header = sam::Header::builder()
                 .set_reference_sequences(sam_refs)
@@ -40,15 +48,15 @@ pub fn align_reads(
                     let mut w = bam::Writer::new(writer);
                     w.write_header(&sam_header)?;
                     OutputWriter::Bam(w, sam_header)
-                },
+                }
                 OutputFormat::Sam => {
                     let mut w = sam::Writer::new(writer);
                     w.write_header(&sam_header)?;
                     OutputWriter::Sam(w)
-                },
+                }
                 _ => unreachable!(),
             }
-        },
+        }
         OutputFormat::Paf => OutputWriter::Paf(writer),
     };
 
@@ -75,25 +83,33 @@ pub fn align_reads(
 
                 match writer {
                     OutputWriter::Bam(_, _) | OutputWriter::Sam(_) => {
-                        let flags = if mem_ref.strand { sam::record::Flags::empty() } else { sam::record::Flags::REVERSE_COMPLEMENTED };
+                        let flags = if mem_ref.strand {
+                            sam::record::Flags::empty()
+                        } else {
+                            sam::record::Flags::REVERSE_COMPLEMENTED
+                        };
                         let read_name = str::from_utf8(record.id())?;
                         let record = sam::Record::builder()
                             .set_read_name(read_name.parse()?)
                             .set_flags(flags)
                             .set_reference_sequence_name(mem_ref.name.parse()?)
                             // 1-based position
-                            .set_position(sam::record::Position::try_from((target_start + 1) as i32)?)
+                            .set_position(sam::record::Position::try_from(
+                                (target_start + 1) as i32,
+                            )?)
                             .set_mapping_quality(sam::record::MappingQuality::from(255))
                             .set_cigar(format!("{}M", mem.len).parse()?)
                             .set_template_length(mem.len as i32)
                             .build()?;
 
                         match writer {
-                            OutputWriter::Bam(ref mut w, ref header) => w.write_sam_record(header.reference_sequences(), &record)?,
+                            OutputWriter::Bam(ref mut w, ref header) => {
+                                w.write_sam_record(header.reference_sequences(), &record)?
+                            }
                             OutputWriter::Sam(ref mut w) => w.write_record(&record)?,
                             _ => unreachable!(),
                         }
-                    },
+                    }
                     OutputWriter::Paf(ref mut w) => {
                         let paf = PafEntry {
                             query_name: &record.id(),
@@ -111,7 +127,7 @@ pub fn align_reads(
                         };
 
                         write_paf(w, &paf)?;
-                    },
+                    }
                 }
             }
         }

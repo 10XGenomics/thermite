@@ -6,14 +6,14 @@ use anyhow::Result;
 
 use bincode;
 
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
-use std::ffi::OsStr;
 
-use thermite_aligner::{aligner, index};
 use thermite_aligner::aln_writer::OutputFormat;
+use thermite_aligner::{aligner, index};
 
 fn main() -> Result<()> {
     let opts = ThermiteOpts::parse();
@@ -36,7 +36,11 @@ fn main() -> Result<()> {
             let output_fmt = if align_opts.bam {
                 let path = Path::new(&align_opts.output);
                 let ext = path.extension();
-                if ext == Some(OsStr::new("bam")) { OutputFormat::Bam } else { OutputFormat::Sam }
+                if ext == Some(OsStr::new("bam")) {
+                    OutputFormat::Bam
+                } else {
+                    OutputFormat::Sam
+                }
             } else {
                 OutputFormat::Paf
             };
