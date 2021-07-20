@@ -47,6 +47,7 @@ pub fn align_reads(
                 OutputFormat::Bam => {
                     let mut w = bam::Writer::new(writer);
                     w.write_header(&sam_header)?;
+                    w.write_reference_sequences(sam_header.reference_sequences())?;
                     OutputWriter::Bam(w, sam_header)
                 }
                 OutputFormat::Sam => {
