@@ -81,10 +81,11 @@ pub fn align_reads(
                             .set_read_name(read_name.parse()?)
                             .set_flags(flags)
                             .set_reference_sequence_name(mem_ref.name.parse()?)
-                            .set_position(sam::record::Position::try_from(target_start as i32)?)
+                            // 1-based position
+                            .set_position(sam::record::Position::try_from((target_start + 1) as i32)?)
                             .set_mapping_quality(sam::record::MappingQuality::from(255))
-                            .set_cigar(format!("{}M", mem_ref.len).parse()?)
-                            .set_template_length(mem_ref.len as i32)
+                            .set_cigar(format!("{}M", mem.len).parse()?)
+                            .set_template_length(mem.len as i32)
                             .build()?;
 
                         match writer {

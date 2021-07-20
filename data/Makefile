@@ -19,11 +19,11 @@ export TIMEFMT=time user=%U system=%S elapsed=%E cpu=%P memory=%M job=%J
 endif
 
 # Test the Thermite aligner.
-all: test_query.paf
+all: test_query.paf test_query.sam test_query.bam
 
 # Remove test output.
 clean:
-	rm -f test_query.paf
+	rm -f test_query.paf test_query.sam test_query.bam
 
 .DELETE_ON_ERROR:
 .SECONDARY:
@@ -32,6 +32,14 @@ clean:
 %.fasta.tai: %.fasta
 	thermite index -o $@ $<
 
-# Align the query to the reference.
+# Align the query to the reference (output paf).
 %.paf: $(ref).fasta.tai %.fastq
 	thermite align -k$k -o $@ $^
+
+# Align the query to the reference (output sam).
+%.sam: $(ref).fasta.tai %.fastq
+	thermite align -a -k$k -o $@ $^
+
+# Align the query to the reference (output bam).
+%.bam: $(ref).fasta.tai %.fastq
+	thermite align -a -k$k -o $@ $^
