@@ -1,4 +1,6 @@
 /target
 
+data/**.bam
 data/**.paf
+data/**.sam
 data/**.tai

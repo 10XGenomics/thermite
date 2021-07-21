@@ -640,6 +640,70 @@ dependencies = [
 ]
 
 [[package]]
+name = "noodles"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ce1036e011bbd1aee24c9cb3b86838c2ba876e52064597dee577b6391ca266b"
+dependencies = [
+ "noodles-bam",
+ "noodles-core",
+ "noodles-gff",
+ "noodles-sam",
+]
+
+[[package]]
+name = "noodles-bam"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25382fb0749122d3b1df49cd866b3c33cb677707e973bd9fe5ca81fa41143e7"
+dependencies = [
+ "bit-vec",
+ "byteorder",
+ "noodles-bgzf",
+ "noodles-core",
+ "noodles-sam",
+]
+
+[[package]]
+name = "noodles-bgzf"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de69ee51f68e4d85cab237d7ce95e3ca5f1f11d000e40a73b9872bada2eb6ddb"
+dependencies = [
+ "byteorder",
+ "flate2",
+]
+
+[[package]]
+name = "noodles-core"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "492ae8bb9d4a25be4a3d421d2472901f0286fdbdc58f54ebffee07eb271bdb3c"
+dependencies = [
+ "noodles-sam",
+]
+
+[[package]]
+name = "noodles-gff"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a57bb35637f36de68bc91b2504e6b94e4a0f3a58f4ed2234dba4fc4b692febb3"
+dependencies = [
+ "percent-encoding",
+]
+
+[[package]]
+name = "noodles-sam"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e84075292f2d7bf045273820c7dc2defda1c4fd1db119124b7244d0c53f0fb8b"
+dependencies = [
+ "bitflags",
+ "indexmap",
+ "noodles-bgzf",
+]
+
+[[package]]
 name = "num-complex"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -709,6 +773,12 @@ name = "paste"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
+
+[[package]]
+name = "percent-encoding"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
 name = "petgraph"
@@ -1059,6 +1129,7 @@ dependencies = [
  "bio",
  "clap",
  "needletail",
+ "noodles",
  "rayon",
  "serde",
 ]

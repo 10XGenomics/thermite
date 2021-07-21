@@ -6,10 +6,13 @@ use anyhow::Result;
 
 use bincode;
 
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io;
 use std::io::prelude::*;
+use std::path::Path;
 
+use thermite_aligner::aln_writer::OutputFormat;
 use thermite_aligner::{aligner, index};
 
 fn main() -> Result<()> {
@@ -30,6 +33,18 @@ fn main() -> Result<()> {
             index_file.write_all(&serialized_index)?;
         }
         SubCommand::Align(align_opts) => {
+            let output_fmt = if align_opts.bam {
+                let path = Path::new(&align_opts.output);
+                let ext = path.extension();
+                if ext == Some(OsStr::new("bam")) {
+                    OutputFormat::Bam
+                } else {
+                    OutputFormat::Sam
+                }
+            } else {
+                OutputFormat::Paf
+            };
+
             let serialized_index = fs::read(&align_opts.index)?;
             let index = bincode::deserialize(&serialized_index)?;
             drop(serialized_index);
@@ -38,6 +53,7 @@ fn main() -> Result<()> {
                 &index,
                 &align_opts.queries,
                 &align_opts.output,
+                output_fmt,
                 align_opts.min_seed_len,
             )?;
         }
@@ -68,6 +84,9 @@ pub struct Align {
     /// Minimum length of an exact seed match
     #[clap(short = 'k', long, default_value = "30")]
     pub min_seed_len: usize,
+    /// Output in SAM or BAM format instead of PAF
+    #[clap(short = 'a')]
+    pub bam: bool,
 }
 
 #[derive(Debug, Clap)]
