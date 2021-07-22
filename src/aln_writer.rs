@@ -1,8 +1,24 @@
 use anyhow::Result;
 
+use noodles::{bam, sam};
+
 use std::fmt;
 use std::io::Write;
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum OutputFormat {
+    Bam,
+    Sam,
+    Paf,
+}
+
+pub enum OutputWriter {
+    Bam(bam::Writer<Box<dyn Write>>, sam::Header),
+    Sam(sam::Writer<Box<dyn Write>>),
+    Paf(Box<dyn Write>),
+}
+
+#[derive(Clone, PartialEq)]
 pub struct PafEntry<'a> {
     pub query_name: &'a [u8],
     pub query_len: usize,

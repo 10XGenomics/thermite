@@ -29,7 +29,7 @@ impl Index {
             seq.extend_from_slice(&record.seq());
             seq.push(b'$');
             refs.push(Ref {
-                name: record.id().to_vec(),
+                name: String::from_utf8(record.id().to_vec())?,
                 strand: true,
                 len: record.seq().len(),
                 end_idx: seq.len(),
@@ -39,7 +39,7 @@ impl Index {
             seq.extend_from_slice(&revcomp);
             seq.push(b'$');
             refs.push(Ref {
-                name: record.id().to_vec(),
+                name: String::from_utf8(record.id().to_vec())?,
                 strand: false,
                 len: record.seq().len(),
                 end_idx: seq.len(),
@@ -89,6 +89,10 @@ impl Index {
             },
         )
     }
+
+    pub fn refs(&self) -> &[Ref] {
+        &self.refs
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -100,7 +104,7 @@ pub struct Mem {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ref {
-    pub name: Vec<u8>,
+    pub name: String,
     pub strand: bool,
     pub len: usize,
     pub end_idx: usize,
