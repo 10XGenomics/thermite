@@ -24,7 +24,7 @@ fn main() -> Result<()> {
 
     match opts.subcommand {
         SubCommand::Index(index_opts) => {
-            let index = index::Index::create_from_file(&index_opts.reference)?;
+            let index = index::Index::create_from_files(&index_opts.reference, &index_opts.annotations)?;
             let serialized_index = bincode::serialize(&index)?;
             let mut index_file: Box<dyn Write> = match &index_opts.index[..] {
                 "-" => Box::new(io::stdout()),
@@ -64,8 +64,11 @@ fn main() -> Result<()> {
 
 #[derive(Debug, Clap)]
 pub struct Index {
-    /// Path to the reference fasta
+    /// Path to the reference fasta. Thermite expects a fasta index with the same
+    /// file name and the extension `.fasta.fai` to exist.
     pub reference: String,
+    /// Path to the GTF annotations of the reference fasta
+    pub annotations: String,
     /// TAI (Thermite Aligner Index) file to write the index
     #[clap(short = 'o', long = "output", default_value = "-")]
     pub index: String,

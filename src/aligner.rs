@@ -34,7 +34,7 @@ pub fn align_reads(
                     (
                         r.name.to_owned(),
                         sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32)
-                            .unwrap(),
+                            .expect("Error in creating a SAM header reference sequence."),
                     )
                 })
                 .collect();
