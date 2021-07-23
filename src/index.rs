@@ -65,18 +65,35 @@ impl Index {
         let fmd = FMDIndex::from(fm);
 
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
-        let txome = transcriptome::Transcriptome::from_reader(BufReader::new(File::open(annot_path)?))
-            .expect(&format!("Error in building transcriptome from annotations {}", annot_path));
-        let genes = txome.genes.iter()
-            .map(|g| Gene { id: g.id.to_owned(), name: g.id.to_owned() })
+        let txome =
+            transcriptome::Transcriptome::from_reader(BufReader::new(File::open(annot_path)?))
+                .expect(&format!(
+                    "Error in building transcriptome from annotations {}",
+                    annot_path
+                ));
+        let genes = txome
+            .genes
+            .iter()
+            .map(|g| Gene {
+                id: g.id.to_owned(),
+                name: g.id.to_owned(),
+            })
             .collect::<Vec<_>>();
-        let txs = txome.transcripts.iter()
+        let txs = txome
+            .transcripts
+            .iter()
             .map(|tx| {
                 let mut tx_seq = Vec::with_capacity(tx.len() as usize);
                 tx.get_sequence(&mut ref_fai_reader, &mut tx_seq)
                     .expect(&format!("Error in reading reference file {}", ref_path));
-                let exons = tx.exons.iter()
-                    .map(|e| Exon { start: e.start as usize, end: e.end as usize, tx_idx: tx.idx.0 as usize })
+                let exons = tx
+                    .exons
+                    .iter()
+                    .map(|e| Exon {
+                        start: e.start as usize,
+                        end: e.end as usize,
+                        tx_idx: tx.idx.0 as usize,
+                    })
                     .collect::<Vec<_>>();
 
                 Tx {
@@ -91,7 +108,13 @@ impl Index {
             .collect::<Vec<_>>();
         let txome = Txome { genes, txs };
 
-        Ok(Index { refs, seq, sa, fmd, txome })
+        Ok(Index {
+            refs,
+            seq,
+            sa,
+            fmd,
+            txome,
+        })
     }
 
     pub fn longest_smem(&self, query: &[u8], min_mem_len: usize) -> Option<Mem> {
