@@ -71,6 +71,7 @@ pub fn align_reads(
                 let (mem_ref, ref_idx) = index.idx_to_ref(mem.ref_idx);
                 let query_start = mem.query_idx;
                 let query_end = mem.query_idx + mem.len;
+                // need to convert interval to always be [left, right) regardless of strand
                 let target_start = if mem_ref.strand {
                     ref_idx
                 } else {
