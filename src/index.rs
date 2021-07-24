@@ -5,8 +5,8 @@ use needletail::*;
 use bio::alphabets::dna;
 use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
-use bio::data_structures::suffix_array::{suffix_array, RawSuffixArray};
 use bio::data_structures::interval_tree::IntervalTree;
+use bio::data_structures::suffix_array::{suffix_array, RawSuffixArray};
 use bio::io::fasta::IndexedReader;
 use bio::utils::Interval;
 
@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use transcriptome;
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::collections::HashMap;
 use std::str;
 
 use crate::txome::*;
@@ -82,12 +82,15 @@ impl Index {
         let fmd = FMDIndex::from(fm);
 
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
-        let transcriptome::Transcriptome { genes: txome_genes, transcripts: txome_txs, .. } =
-            transcriptome::Transcriptome::from_reader(BufReader::new(File::open(annot_path)?))
-                .expect(&format!(
-                    "Error in building transcriptome from annotations {}",
-                    annot_path
-                ));
+        let transcriptome::Transcriptome {
+            genes: txome_genes,
+            transcripts: txome_txs,
+            ..
+        } = transcriptome::Transcriptome::from_reader(BufReader::new(File::open(annot_path)?))
+            .expect(&format!(
+                "Error in building transcriptome from annotations {}",
+                annot_path
+            ));
 
         let genes = txome_genes
             .into_iter()
@@ -126,7 +129,8 @@ impl Index {
                         };
                         let exon_tx_idx = tx.idx.0 as usize;
 
-                        exon_to_tx.insert(Interval::new(exon_start..exon_end).unwrap(), exon_tx_idx);
+                        exon_to_tx
+                            .insert(Interval::new(exon_start..exon_end).unwrap(), exon_tx_idx);
 
                         Exon {
                             start: e.start as usize,
@@ -147,7 +151,11 @@ impl Index {
             })
             .collect::<Vec<_>>();
 
-        let txome = Txome { genes, txs, exon_to_tx };
+        let txome = Txome {
+            genes,
+            txs,
+            exon_to_tx,
+        };
 
         Ok(Index {
             refs,
