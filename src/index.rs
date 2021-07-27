@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::str;
+use std::cmp;
 
 use crate::txome::*;
 
@@ -166,8 +167,8 @@ impl Index {
         })
     }
 
-    pub fn intersect_transcripts(&self, query: &[u8], min_mem_len: usize) -> Vec<TxHit> {
-        let mut tx_hits: HashMap<usize, usize> = HashMap::with_capacity(8);
+    pub fn intersect_transcripts(&self, query: &[u8], min_mem_len: usize) -> HashMap<usize, TxHit> {
+        let mut tx_hits: HashMap<usize, TxHit> = HashMap::with_capacity(8);
         let intervals = self.fmd.all_smems(query, min_mem_len);
 
         for interval in intervals {
@@ -179,17 +180,16 @@ impl Index {
                 let tx_idxs = self.txome.exon_to_tx.find(exon);
 
                 for tx_idx in tx_idxs {
-                    *tx_hits.entry(*tx_idx.data()).or_insert(1) += 1;
+                    let mut tx_hit = tx_hits
+                        .entry(*tx_idx.data())
+                        .or_insert_with(|| TxHit { tx_idx: *tx_idx.data(), hits: 0, interval: exon.clone() });
+                    tx_hit.hits += 1;
+                    tx_hit.interval = interval_union(tx_hit.interval, &exon);
                 }
             }
         }
 
-        let mut res = tx_hits
-            .into_iter()
-            .map(|(k, v)| TxHit { tx_idx: k, hits: v })
-            .collect::<Vec<_>>();
-        res.sort_unstable_by_key(|k| k.hits);
-        res
+        tx_hits
     }
 
     pub fn longest_smem(&self, query: &[u8], min_mem_len: usize) -> Option<Mem> {
@@ -237,4 +237,8 @@ pub struct Ref {
     pub len: usize,
     pub start_idx: usize,
     pub end_idx: usize,
+}
+
+fn interval_union(a: &Interval, b: &Interval) -> Interval {
+    Interval::new(cmp::min(a.start, b.start), cmp::max(a.end, b.end))
 }

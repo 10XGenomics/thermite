@@ -12,8 +12,9 @@ use std::str;
 
 use crate::aln_writer::*;
 use crate::index::*;
+use crate::txome::*;
 
-pub fn align_reads(
+pub fn align_reads_from_file(
     index: &Index,
     query_paths: &[String],
     output_path: &str,
@@ -67,7 +68,7 @@ pub fn align_reads(
         while let Some(record) = reader.next() {
             let record = record?;
 
-            if let Some(mem) = index.longest_smem(&record.seq(), min_seed_len) {
+            if let Some(aln) = align_read(index, &record.seq(), min_seed_len) {
                 let (mem_ref, ref_idx) = index.idx_to_ref(mem.ref_idx);
                 let query_start = mem.query_idx;
                 let query_end = mem.query_idx + mem.len;
@@ -136,4 +137,20 @@ pub fn align_reads(
     }
 
     Ok(())
+}
+
+pub fn align_read(index: &Index, read: &[u8], min_seed_len: usize) -> Option<Alignment> {
+    let tx_hits_map = index.intersect_transcripts(read, min_seed_len);
+    let mut tx_hits = tx_hits_map
+        .values()
+        .collect::<Vec<_>>();
+    tx_hits.sort_unstable_by_key(|k| k.hits);
+
+    for tx_hit in tx_hits.into_iter().rev() {
+        // TODO: produce alignments
+    }
+}
+
+pub struct Alignment {
+
 }

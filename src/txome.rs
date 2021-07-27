@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use bio::data_structures::interval_tree::IntervalTree;
+use bio::utils::Interval;
 
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
@@ -32,8 +33,9 @@ pub struct Exon {
     pub tx_idx: usize,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct TxHit {
     pub tx_idx: usize,
     pub hits: usize,
+    pub interval: Interval,
 }

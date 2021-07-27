@@ -50,7 +50,7 @@ fn main() -> Result<()> {
             let index = bincode::deserialize(&serialized_index)?;
             drop(serialized_index);
 
-            aligner::align_reads(
+            aligner::align_reads_from_file(
                 &index,
                 &align_opts.queries,
                 &align_opts.output,
