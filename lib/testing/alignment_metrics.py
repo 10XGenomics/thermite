@@ -153,7 +153,7 @@ def compare_sam_to_paf(
         and (str(sam_alignment.reference_end - 1) == paf_alignment.target_end)
         and (
             str(len(sam_alignment.get_aligned_pairs()))
-            == paf_alignment.num_matches_residues
+            == paf_alignment.num_match_residues
         )
         and (str(sam_alignment.mapping_quality) == paf_alignment.mapping_qual)
     )
@@ -162,21 +162,3 @@ def compare_sam_to_paf(
 
 if __name__ == "__main__":
     main()
-
-PAF_TUPLE = namedtuple(
-    "paf_record",
-    [
-        "query_name",
-        "query_len",
-        "query_start",
-        "query_end",
-        "strand",
-        "target_name",
-        "target_len",
-        "target_start",
-        "target_end",
-        "num_match_residues",
-        "alignment_len",
-        "mapping_qual",
-    ],
-)
