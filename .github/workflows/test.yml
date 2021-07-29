@@ -10,8 +10,15 @@ jobs:
   Linux:
     runs-on: ubuntu-20.04
     steps:
+      - name: Install black & pylint
+        run: pip3 install --user black==20.8b1 pylint==2.5.3 astroid==2.4.2
       - name: Checkout git repository
         uses: actions/checkout@master
+      - name: Check Python black formatting
+        run: ~/.local/bin/black --check --diff ./ lib/testing/*py
+      - name: Check for pylint errors
+        run: >
+          pylint --rcfile=.pylintrc lib/testing/*py;
       - name: Install cargo/rustc
         run: |
           case $(rustc --version) in
