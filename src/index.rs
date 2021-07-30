@@ -167,9 +167,9 @@ impl Index {
         })
     }
 
-    pub fn intersect_transcripts(&self, query: &[u8], min_mem_len: usize) -> HashMap<usize, TxHit> {
+    pub fn intersect_transcripts(&self, query: &[u8], min_seed_len: usize) -> HashMap<usize, TxHit> {
         let mut tx_hits: HashMap<usize, TxHit> = HashMap::with_capacity(8);
-        let intervals = self.fmd.all_smems(query, min_mem_len);
+        let intervals = self.fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -182,9 +182,9 @@ impl Index {
                 for tx_idx in tx_idxs {
                     let mut tx_hit = tx_hits
                         .entry(*tx_idx.data())
-                        .or_insert_with(|| TxHit { tx_idx: *tx_idx.data(), hits: 0, interval: exon.clone() });
+                        .or_insert_with(|| TxHit { tx_idx: *tx_idx.data(), hits: 0, total_len: 0 });
                     tx_hit.hits += 1;
-                    tx_hit.interval = interval_union(tx_hit.interval, &exon);
+                    tx_hit.total_len += mem_len;
                 }
             }
         }
@@ -192,9 +192,9 @@ impl Index {
         tx_hits
     }
 
-    pub fn longest_smem(&self, query: &[u8], min_mem_len: usize) -> Option<Mem> {
+    pub fn longest_smem(&self, query: &[u8], min_seed_len: usize) -> Option<Mem> {
         let mut max_smem = None;
-        let intervals = self.fmd.all_smems(query, min_mem_len);
+        let intervals = self.fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -221,6 +221,10 @@ impl Index {
     pub fn refs(&self) -> &[Ref] {
         &self.refs
     }
+
+    pub fn txome(&self) -> &Txome {
+        &self.txome
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -237,8 +241,4 @@ pub struct Ref {
     pub len: usize,
     pub start_idx: usize,
     pub end_idx: usize,
-}
-
-fn interval_union(a: &Interval, b: &Interval) -> Interval {
-    Interval::new(cmp::min(a.start, b.start), cmp::max(a.end, b.end))
 }

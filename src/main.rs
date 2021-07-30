@@ -56,6 +56,8 @@ fn main() -> Result<()> {
                 &align_opts.output,
                 output_fmt,
                 align_opts.min_seed_len,
+                align_opts.min_aln_score,
+                align_opts.min_total_hit_len,
             )?;
         }
     }
@@ -88,6 +90,12 @@ pub struct Align {
     /// Minimum length of an exact seed match
     #[clap(short = 'k', long, default_value = "30")]
     pub min_seed_len: usize,
+    /// Minimum alignment score
+    #[clap(short = 's', long, default_value = "40")]
+    pub min_aln_score: i32,
+    /// Minimum total seed hit length (sum of the lengths of all seed hits)
+    #[clap(long, default_value = "40")]
+    pub min_total_hit_len: usize,
     /// Output in SAM or BAM format instead of PAF
     #[clap(short = 'a')]
     pub bam: bool,

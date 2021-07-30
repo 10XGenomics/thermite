@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::utils::Interval;
+use bio::alignment::sparse::HashMapFx;
+use bio::alignment::Alignment;
 
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
@@ -37,5 +38,20 @@ pub struct Exon {
 pub struct TxHit {
     pub tx_idx: usize,
     pub hits: usize,
-    pub interval: Interval,
+    pub total_len: usize,
+}
+
+#[derive(Clone)]
+pub struct GenomeAlignment {
+    aln: Alignment,
+    tx_idx: usize,
+}
+
+pub fn lift_tx_to_genome(mut tx_aln: Alignment, tx: &Tx, tx_idx: usize) -> GenomeAlignment {
+
+
+    GenomeAlignment {
+        aln: tx_aln,
+        tx_idx,
+    }
 }

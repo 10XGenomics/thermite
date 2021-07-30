@@ -4,6 +4,10 @@ use needletail::*;
 
 use noodles::{bam, sam};
 
+use bio::alignment::Alignment;
+use bio::alignment::pairwise::banded::Aligner;
+use bio::alignment::sparse::{hash_kmers, HashMapFx};
+
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::prelude::*;
@@ -14,12 +18,16 @@ use crate::aln_writer::*;
 use crate::index::*;
 use crate::txome::*;
 
+type Kmers<'a> = HashMapFx<&'a [u8], Vec<u32>>;
+
 pub fn align_reads_from_file(
     index: &Index,
     query_paths: &[String],
     output_path: &str,
     output_fmt: OutputFormat,
     min_seed_len: usize,
+    min_aln_score: i32,
+    min_seed_hit_len: usize,
 ) -> Result<()> {
     let output_writer: Box<dyn Write> = match output_path {
         "-" => Box::new(BufWriter::new(io::stdout())),
@@ -62,13 +70,15 @@ pub fn align_reads_from_file(
         OutputFormat::Paf => OutputWriter::Paf(output_writer),
     };
 
+    let mut tx_kmer_cache = vec![None; index.txome().txs.len()];
+
     for query_path in query_paths {
         let mut reader = parse_fastx_file(query_path)?;
 
         while let Some(record) = reader.next() {
             let record = record?;
 
-            if let Some(aln) = align_read(index, &record.seq(), min_seed_len) {
+            if let Some(aln) = align_read(index, &mut tx_kmer_cache, &record.seq(), min_seed_len, min_aln_score, min_seed_hit_len) {
                 let (mem_ref, ref_idx) = index.idx_to_ref(mem.ref_idx);
                 let query_start = mem.query_idx;
                 let query_end = mem.query_idx + mem.len;
@@ -139,18 +149,36 @@ pub fn align_reads_from_file(
     Ok(())
 }
 
-pub fn align_read(index: &Index, read: &[u8], min_seed_len: usize) -> Option<Alignment> {
+pub fn align_read<'a>(index: &'a Index, tx_kmer_cache: &mut [Option<Kmers<'a>>], read: &[u8], min_seed_len: usize, min_aln_score: i32, min_total_hit_len: usize) -> Option<GenomeAlignment> {
+    let mut aligner = Aligner::new(-2, -1, |a, b| if a == b { 1 } else { -1 }, min_seed_len, 8);
     let tx_hits_map = index.intersect_transcripts(read, min_seed_len);
     let mut tx_hits = tx_hits_map
         .values()
         .collect::<Vec<_>>();
-    tx_hits.sort_unstable_by_key(|k| k.hits);
+    tx_hits.sort_unstable_by_key(|k| k.total_len);
+    let mut best_aln: Option<GenomeAlignment> = None;
 
     for tx_hit in tx_hits.into_iter().rev() {
-        // TODO: produce alignments
+        if tx_hit.total_len < min_total_hit_len {
+            break;
+        }
+
+        let tx = &index.txome().txs[tx_hit.tx_idx];
+        if tx_kmer_cache[tx_hit.tx_idx].is_none() {
+            tx_kmer_cache[tx_hit.tx_idx] = Some(hash_kmers(&tx.seq, min_seed_len));
+        }
+
+        let aln = aligner.semiglobal_with_prehash(read, &tx.seq, tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap());
+        let genome_aln = lift_tx_to_genome(aln, &index.txome().txs[tx_hit.tx_idx], tx_hit.tx_idx);
+
+        if let Some(ref mut a) = best_aln {
+            if genome_aln.aln.score > min_aln_score && genome_aln.aln.score > a.score {
+                *a = genome_aln;
+            }
+        } else {
+            best_aln = Some(genome_aln);
+        }
     }
-}
 
-pub struct Alignment {
-
+    best_aln
 }
