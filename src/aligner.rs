@@ -7,6 +7,7 @@ use noodles::{bam, sam};
 use bio::alignment::Alignment;
 use bio::alignment::pairwise::banded::Aligner;
 use bio::alignment::sparse::{hash_kmers, HashMapFx};
+use bio::alignment::AlignmentOperation;
 
 use std::convert::TryFrom;
 use std::fs::File;
@@ -79,24 +80,9 @@ pub fn align_reads_from_file(
             let record = record?;
 
             if let Some(aln) = align_read(index, &mut tx_kmer_cache, &record.seq(), min_seed_len, min_aln_score, min_seed_hit_len) {
-                let (mem_ref, ref_idx) = index.idx_to_ref(mem.ref_idx);
-                let query_start = mem.query_idx;
-                let query_end = mem.query_idx + mem.len;
-                // need to convert interval to always be [left, right) regardless of strand
-                let target_start = if mem_ref.strand {
-                    ref_idx
-                } else {
-                    mem_ref.len - ref_idx - mem.len
-                };
-                let target_end = if mem_ref.strand {
-                    ref_idx + mem.len
-                } else {
-                    mem_ref.len - ref_idx
-                };
-
                 match writer {
                     OutputWriter::Bam(_, _) | OutputWriter::Sam(_) => {
-                        let flags = if mem_ref.strand {
+                        let flags = if aln.strand {
                             sam::record::Flags::empty()
                         } else {
                             sam::record::Flags::REVERSE_COMPLEMENTED
@@ -105,14 +91,14 @@ pub fn align_reads_from_file(
                         let record = sam::Record::builder()
                             .set_read_name(read_name.parse()?)
                             .set_flags(flags)
-                            .set_reference_sequence_name(mem_ref.name.parse()?)
+                            .set_reference_sequence_name(aln.ref_name.parse()?)
                             // 1-based position
                             .set_position(sam::record::Position::try_from(
-                                (target_start + 1) as i32,
+                                (aln.aln.ystart + 1) as i32,
                             )?)
                             .set_mapping_quality(sam::record::MappingQuality::from(255))
-                            .set_cigar(format!("{}M", mem.len).parse()?)
-                            .set_template_length(mem.len as i32)
+                            .set_cigar(aln.aln.cigar(false).parse()?)
+                            .set_template_length((aln.aln.xend - aln.aln.xstart) as i32)
                             .build()?;
 
                         match writer {
@@ -124,18 +110,26 @@ pub fn align_reads_from_file(
                         }
                     }
                     OutputWriter::Paf(ref mut w) => {
+                        let num_match = aln.aln.operations.iter().filter(|op| match op {
+                            AlignmentOperation::Match => true,
+                            _ => false,
+                        }).count();
+                        let num_match_gap = aln.aln.operations.iter().filter(|op| match op {
+                            AlignmentOperation::Yclip(_) => false,
+                            _ => true,
+                        }).count();
                         let paf = PafEntry {
                             query_name: &record.id(),
                             query_len: record.seq().len(),
-                            query_start,
-                            query_end,
-                            strand: mem_ref.strand,
-                            target_name: mem_ref.name.as_bytes(),
-                            target_len: mem_ref.len,
-                            target_start,
-                            target_end,
-                            num_match: mem.len,
-                            num_match_gap: mem.len,
+                            query_start: aln.aln.xstart,
+                            query_end: aln.aln.xend,
+                            strand: aln.strand,
+                            target_name: aln.ref_name.as_bytes(),
+                            target_len: aln.aln.ylen,
+                            target_start: aln.aln.ystart,
+                            target_end: aln.aln.yend,
+                            num_match,
+                            num_match_gap,
                             map_qual: 255,
                         };
 
@@ -150,6 +144,7 @@ pub fn align_reads_from_file(
 }
 
 pub fn align_read<'a>(index: &'a Index, tx_kmer_cache: &mut [Option<Kmers<'a>>], read: &[u8], min_seed_len: usize, min_aln_score: i32, min_total_hit_len: usize) -> Option<GenomeAlignment> {
+    // TODO: tighten band width when good alignments are found
     let mut aligner = Aligner::new(-2, -1, |a, b| if a == b { 1 } else { -1 }, min_seed_len, 8);
     let tx_hits_map = index.intersect_transcripts(read, min_seed_len);
     let mut tx_hits = tx_hits_map
@@ -169,10 +164,15 @@ pub fn align_read<'a>(index: &'a Index, tx_kmer_cache: &mut [Option<Kmers<'a>>],
         }
 
         let aln = aligner.semiglobal_with_prehash(read, &tx.seq, tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap());
-        let genome_aln = lift_tx_to_genome(aln, &index.txome().txs[tx_hit.tx_idx], tx_hit.tx_idx);
+        let genome_aln = {
+            // lift to concatenated genome coordinates
+            let a = lift_tx_to_genome(aln, &index.txome().txs[tx_hit.tx_idx]);
+            // convert concatenated genome coordinates to genome coordinates
+            convert_aln_index_to_genome(index, a, tx_hit.tx_idx)
+        };
 
         if let Some(ref mut a) = best_aln {
-            if genome_aln.aln.score > min_aln_score && genome_aln.aln.score > a.score {
+            if genome_aln.aln.score > min_aln_score && genome_aln.aln.score > a.aln.score {
                 *a = genome_aln;
             }
         } else {
@@ -181,4 +181,25 @@ pub fn align_read<'a>(index: &'a Index, tx_kmer_cache: &mut [Option<Kmers<'a>>],
     }
 
     best_aln
+}
+
+fn convert_aln_index_to_genome(index: &Index, mut aln: Alignment, tx_idx: usize) -> GenomeAlignment {
+    // TODO: could just look up chromosome by using transcript
+    let (aln_ref, _ref_idx) = index.idx_to_ref(aln.ystart);
+    // convert to genome coordinates
+    aln.ystart -= aln_ref.start_idx;
+    aln.yend -= aln_ref.start_idx;
+    aln.ylen = aln_ref.len;
+    // need to convert interval to always be [left, right) regardless of strand
+    if !aln_ref.strand {
+        aln.ystart = aln_ref.len - aln.yend;
+        aln.yend = aln_ref.len - aln.ystart;
+        aln.operations.reverse();
+    }
+    GenomeAlignment {
+        aln,
+        tx_idx,
+        ref_name: aln_ref.name.to_owned(),
+        strand: aln_ref.strand,
+    }
 }

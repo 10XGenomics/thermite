@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::str;
-use std::cmp;
 
 use crate::txome::*;
 
@@ -176,8 +175,8 @@ impl Index {
             let mem_len = interval.2;
 
             for ref_idx in &forwards_idxs {
-                let exon = Interval::new(*ref_idx..*ref_idx + mem_len).unwrap();
-                let tx_idxs = self.txome.exon_to_tx.find(exon);
+                let seed = Interval::new(*ref_idx..*ref_idx + mem_len).unwrap();
+                let tx_idxs = self.txome.exon_to_tx.find(seed);
 
                 for tx_idx in tx_idxs {
                     let mut tx_hit = tx_hits

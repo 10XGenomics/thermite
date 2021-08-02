@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::alignment::sparse::HashMapFx;
-use bio::alignment::Alignment;
+use bio::alignment::{Alignment, AlignmentOperation};
 
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
@@ -34,6 +33,12 @@ pub struct Exon {
     pub tx_idx: usize,
 }
 
+impl Exon {
+    pub fn len(&self) -> usize {
+        self.end - self.start
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct TxHit {
     pub tx_idx: usize,
@@ -43,15 +48,107 @@ pub struct TxHit {
 
 #[derive(Clone)]
 pub struct GenomeAlignment {
-    aln: Alignment,
-    tx_idx: usize,
+    pub aln: Alignment,
+    pub tx_idx: usize,
+    pub ref_name: String,
+    pub strand: bool,
 }
 
-pub fn lift_tx_to_genome(mut tx_aln: Alignment, tx: &Tx, tx_idx: usize) -> GenomeAlignment {
+pub fn lift_tx_to_genome(tx_aln: Alignment, tx: &Tx) -> Alignment {
+    let mut aln = tx_aln.clone();
+    aln.operations.clear();
 
+    let mut i = tx_aln.ystart;
+    let mut op_idx = 0;
+    // start position of the current exon in the transcript
+    // (prefix sum of all previous exon lengths)
+    let mut exon_sum = 0;
+    // index of the current exon
+    let mut exon_idx = 0;
 
-    GenomeAlignment {
-        aln: tx_aln,
-        tx_idx,
+    // find exon where tx alignment starts
+    while exon_sum + tx.exons[exon_idx].len() <= i {
+        exon_sum += tx.exons[exon_idx].len();
+        exon_idx += 1;
+    }
+
+    let diff = i - exon_sum;
+    aln.ystart = tx.exons[exon_idx].start + diff;
+
+    while op_idx < tx_aln.operations.len() {
+        // TODO: edge case: extra exon will be included when last op is insert and it crosses an exon boundary
+        if exon_sum + tx.exons[exon_idx].len() <= i {
+            exon_sum += tx.exons[exon_idx].len();
+            exon_idx += 1;
+            // intron gap
+            // use Y clip because intron variant does not exist
+            aln.operations.push(AlignmentOperation::Yclip(tx.exons[exon_idx].start - tx.exons[exon_idx - 1].end));
+        }
+
+        match tx_aln.operations[op_idx] {
+            AlignmentOperation::Match
+                | AlignmentOperation::Subst
+                | AlignmentOperation::Del => {
+                i += 1;
+            },
+            _ => (),
+        }
+
+        aln.operations.push(tx_aln.operations[op_idx]);
+        op_idx += 1;
+    }
+
+    assert_eq!(i, tx_aln.yend);
+
+    let diff = i - exon_sum;
+    aln.yend = tx.exons[exon_idx].start + diff;
+
+    aln
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_lift_tx_to_genome() {
+        let exons = vec![
+            Exon { start: 3, end: 6, tx_idx: 0 },
+            Exon { start: 10, end: 13, tx_idx: 0 },
+        ];
+        let tx = Tx {
+            id: "".to_owned(),
+            chrom: "".to_owned(),
+            strand: true,
+            exons,
+            seq: Vec::new(),
+            gene_idx: 0,
+        };
+        let ops = vec![AlignmentOperation::Match, AlignmentOperation::Subst, AlignmentOperation::Ins, AlignmentOperation::Del];
+        let aln = Alignment {
+            score: 0,
+            ystart: 1,
+            xstart: 0,
+            yend: 4,
+            xend: 3,
+            ylen: 15,
+            xlen: 3,
+            operations: ops,
+            mode: AlignmentMode::Semiglobal,
+        };
+        let correct_ops = vec![AlignmentOperation::Match, AlignmentOperation::Subst, AlignmentOperation::Yclip(4), AlignmentOperation::Ins, AlignmentOperation::Del];
+        let correct_aln = Alignment {
+            score: 0,
+            ystart: 4,
+            xstart: 0,
+            yend: 11,
+            xend: 3,
+            ylen: 15,
+            xlen: 3,
+            operations: correct_ops,
+            mode: AlignmentMode::Semiglobal,
+        };
+        let genome_aln = lift_tx_to_genome(aln, &tx, 0);
+        assert_eq!(genome_aln.aln, correct_aln);
     }
 }
