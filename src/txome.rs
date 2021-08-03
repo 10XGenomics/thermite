@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use bio::data_structures::interval_tree::IntervalTree;
 use bio::alignment::{Alignment, AlignmentOperation};
+use bio::data_structures::interval_tree::IntervalTree;
 
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
@@ -83,15 +83,15 @@ pub fn lift_tx_to_genome(tx_aln: &Alignment, tx: &Tx) -> Alignment {
             exon_idx += 1;
             // intron gap
             // use Y clip because intron variant does not exist
-            aln.operations.push(AlignmentOperation::Yclip(tx.exons[exon_idx].start - tx.exons[exon_idx - 1].end));
+            aln.operations.push(AlignmentOperation::Yclip(
+                tx.exons[exon_idx].start - tx.exons[exon_idx - 1].end,
+            ));
         }
 
         match tx_aln.operations[op_idx] {
-            AlignmentOperation::Match
-                | AlignmentOperation::Subst
-                | AlignmentOperation::Del => {
+            AlignmentOperation::Match | AlignmentOperation::Subst | AlignmentOperation::Del => {
                 i += 1;
-            },
+            }
             _ => (),
         }
 
@@ -114,8 +114,16 @@ mod test {
     #[test]
     fn test_lift_tx_to_genome() {
         let exons = vec![
-            Exon { start: 3, end: 6, tx_idx: 0 },
-            Exon { start: 10, end: 13, tx_idx: 0 },
+            Exon {
+                start: 3,
+                end: 6,
+                tx_idx: 0,
+            },
+            Exon {
+                start: 10,
+                end: 13,
+                tx_idx: 0,
+            },
         ];
         let tx = Tx {
             id: "".to_owned(),
@@ -125,7 +133,12 @@ mod test {
             seq: Vec::new(),
             gene_idx: 0,
         };
-        let ops = vec![AlignmentOperation::Match, AlignmentOperation::Subst, AlignmentOperation::Ins, AlignmentOperation::Del];
+        let ops = vec![
+            AlignmentOperation::Match,
+            AlignmentOperation::Subst,
+            AlignmentOperation::Ins,
+            AlignmentOperation::Del,
+        ];
         let aln = Alignment {
             score: 0,
             ystart: 1,
@@ -137,7 +150,13 @@ mod test {
             operations: ops,
             mode: AlignmentMode::Semiglobal,
         };
-        let correct_ops = vec![AlignmentOperation::Match, AlignmentOperation::Subst, AlignmentOperation::Yclip(4), AlignmentOperation::Ins, AlignmentOperation::Del];
+        let correct_ops = vec![
+            AlignmentOperation::Match,
+            AlignmentOperation::Subst,
+            AlignmentOperation::Yclip(4),
+            AlignmentOperation::Ins,
+            AlignmentOperation::Del,
+        ];
         let correct_aln = Alignment {
             score: 0,
             ystart: 4,

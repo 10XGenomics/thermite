@@ -166,7 +166,11 @@ impl Index {
         })
     }
 
-    pub fn intersect_transcripts(&self, query: &[u8], min_seed_len: usize) -> HashMap<usize, TxHit> {
+    pub fn intersect_transcripts(
+        &self,
+        query: &[u8],
+        min_seed_len: usize,
+    ) -> HashMap<usize, TxHit> {
         let mut tx_hits: HashMap<usize, TxHit> = HashMap::with_capacity(8);
         let intervals = self.fmd.all_smems(query, min_seed_len);
 
@@ -179,9 +183,11 @@ impl Index {
                 let tx_idxs = self.txome.exon_to_tx.find(seed);
 
                 for tx_idx in tx_idxs {
-                    let mut tx_hit = tx_hits
-                        .entry(*tx_idx.data())
-                        .or_insert_with(|| TxHit { tx_idx: *tx_idx.data(), hits: 0, total_len: 0 });
+                    let mut tx_hit = tx_hits.entry(*tx_idx.data()).or_insert_with(|| TxHit {
+                        tx_idx: *tx_idx.data(),
+                        hits: 0,
+                        total_len: 0,
+                    });
                     tx_hit.hits += 1;
                     tx_hit.total_len += mem_len;
                 }
