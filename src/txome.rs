@@ -48,13 +48,14 @@ pub struct TxHit {
 
 #[derive(Clone)]
 pub struct GenomeAlignment {
-    pub aln: Alignment,
+    pub genome_aln: Alignment,
+    pub tx_aln: Alignment,
     pub tx_idx: usize,
     pub ref_name: String,
     pub strand: bool,
 }
 
-pub fn lift_tx_to_genome(tx_aln: Alignment, tx: &Tx) -> Alignment {
+pub fn lift_tx_to_genome(tx_aln: &Alignment, tx: &Tx) -> Alignment {
     let mut aln = tx_aln.clone();
     aln.operations.clear();
 

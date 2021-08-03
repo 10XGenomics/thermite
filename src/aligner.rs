@@ -87,18 +87,31 @@ pub fn align_reads_from_file(
                         } else {
                             sam::record::Flags::REVERSE_COMPLEMENTED
                         };
+                        let data = {
+                            use sam::record::{Data, data::{Field, field::{Tag, Value}}};
+                            let tx = &index.txome().txs[aln.tx_idx];
+                            let gene = &index.txome().genes[tx.gene_idx];
+                            let tx_val = format!("{},{}{},{}", tx.id, if tx.strand { '+' } else { '-' }, aln.tx_aln.ystart, aln.tx_aln.cigar(false));
+                            Data::try_from(vec![
+                               Field::new(Tag::Other("TX".to_owned()), Value::String(tx_val)),
+                               Field::new(Tag::Other("GX".to_owned()), Value::String(gene.id.to_owned())),
+                               Field::new(Tag::Other("GN".to_owned()), Value::String(gene.name.to_owned())),
+                               Field::new(Tag::Other("RE".to_owned()), Value::Char('E')),
+                            ])?
+                        };
                         let read_name = str::from_utf8(record.id())?;
                         let record = sam::Record::builder()
                             .set_read_name(read_name.parse()?)
                             .set_flags(flags)
+                            .set_data(data)
                             .set_reference_sequence_name(aln.ref_name.parse()?)
                             // 1-based position
                             .set_position(sam::record::Position::try_from(
-                                (aln.aln.ystart + 1) as i32,
+                                (aln.genome_aln.ystart + 1) as i32,
                             )?)
                             .set_mapping_quality(sam::record::MappingQuality::from(255))
-                            .set_cigar(aln.aln.cigar(false).parse()?)
-                            .set_template_length((aln.aln.xend - aln.aln.xstart) as i32)
+                            .set_cigar(to_noodles_cigar(&aln.genome_aln.operations))
+                            .set_template_length((aln.genome_aln.xend - aln.genome_aln.xstart) as i32)
                             .build()?;
 
                         match writer {
@@ -110,24 +123,24 @@ pub fn align_reads_from_file(
                         }
                     }
                     OutputWriter::Paf(ref mut w) => {
-                        let num_match = aln.aln.operations.iter().filter(|op| match op {
+                        let num_match = aln.genome_aln.operations.iter().filter(|op| match op {
                             AlignmentOperation::Match => true,
                             _ => false,
                         }).count();
-                        let num_match_gap = aln.aln.operations.iter().filter(|op| match op {
+                        let num_match_gap = aln.genome_aln.operations.iter().filter(|op| match op {
                             AlignmentOperation::Yclip(_) => false,
                             _ => true,
                         }).count();
                         let paf = PafEntry {
                             query_name: &record.id(),
                             query_len: record.seq().len(),
-                            query_start: aln.aln.xstart,
-                            query_end: aln.aln.xend,
+                            query_start: aln.genome_aln.xstart,
+                            query_end: aln.genome_aln.xend,
                             strand: aln.strand,
                             target_name: aln.ref_name.as_bytes(),
-                            target_len: aln.aln.ylen,
-                            target_start: aln.aln.ystart,
-                            target_end: aln.aln.yend,
+                            target_len: aln.genome_aln.ylen,
+                            target_start: aln.genome_aln.ystart,
+                            target_end: aln.genome_aln.yend,
                             num_match,
                             num_match_gap,
                             map_qual: 255,
@@ -163,16 +176,16 @@ pub fn align_read<'a>(index: &'a Index, tx_kmer_cache: &mut [Option<Kmers<'a>>],
             tx_kmer_cache[tx_hit.tx_idx] = Some(hash_kmers(&tx.seq, min_seed_len));
         }
 
-        let aln = aligner.semiglobal_with_prehash(read, &tx.seq, tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap());
+        let tx_aln = aligner.semiglobal_with_prehash(read, &tx.seq, tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap());
         let genome_aln = {
             // lift to concatenated genome coordinates
-            let a = lift_tx_to_genome(aln, &index.txome().txs[tx_hit.tx_idx]);
+            let a = lift_tx_to_genome(&tx_aln, &index.txome().txs[tx_hit.tx_idx]);
             // convert concatenated genome coordinates to genome coordinates
-            convert_aln_index_to_genome(index, a, tx_hit.tx_idx)
+            convert_aln_index_to_genome(index, a, tx_hit.tx_idx, tx_aln)
         };
 
         if let Some(ref mut a) = best_aln {
-            if genome_aln.aln.score > min_aln_score && genome_aln.aln.score > a.aln.score {
+            if genome_aln.genome_aln.score > min_aln_score && genome_aln.genome_aln.score > a.genome_aln.score {
                 *a = genome_aln;
             }
         } else {
@@ -183,23 +196,60 @@ pub fn align_read<'a>(index: &'a Index, tx_kmer_cache: &mut [Option<Kmers<'a>>],
     best_aln
 }
 
-fn convert_aln_index_to_genome(index: &Index, mut aln: Alignment, tx_idx: usize) -> GenomeAlignment {
+fn convert_aln_index_to_genome(index: &Index, mut genome_aln: Alignment, tx_idx: usize, tx_aln: Alignment) -> GenomeAlignment {
     // TODO: could just look up chromosome by using transcript
-    let (aln_ref, _ref_idx) = index.idx_to_ref(aln.ystart);
+    let (aln_ref, _ref_idx) = index.idx_to_ref(genome_aln.ystart);
     // convert to genome coordinates
-    aln.ystart -= aln_ref.start_idx;
-    aln.yend -= aln_ref.start_idx;
-    aln.ylen = aln_ref.len;
+    genome_aln.ystart -= aln_ref.start_idx;
+    genome_aln.yend -= aln_ref.start_idx;
+    genome_aln.ylen = aln_ref.len;
     // need to convert interval to always be [left, right) regardless of strand
     if !aln_ref.strand {
-        aln.ystart = aln_ref.len - aln.yend;
-        aln.yend = aln_ref.len - aln.ystart;
-        aln.operations.reverse();
+        genome_aln.ystart = aln_ref.len - genome_aln.yend;
+        genome_aln.yend = aln_ref.len - genome_aln.ystart;
+        genome_aln.operations.reverse();
     }
     GenomeAlignment {
-        aln,
+        genome_aln,
+        tx_aln,
         tx_idx,
         ref_name: aln_ref.name.to_owned(),
         strand: aln_ref.strand,
     }
+}
+
+fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
+    use sam::record::{Cigar, cigar::op::{Op, Kind}};
+
+    fn match_op(op: AlignmentOperation, len: usize) -> Op {
+        match op {
+            AlignmentOperation::Match => Op::new(Kind::SeqMatch, len as u32),
+            AlignmentOperation::Subst => Op::new(Kind::SeqMismatch, len as u32),
+            AlignmentOperation::Del => Op::new(Kind::Deletion, len as u32),
+            AlignmentOperation::Ins => Op::new(Kind::Insertion, len as u32),
+            AlignmentOperation::Xclip(l) => Op::new(Kind::SoftClip, l as u32),
+            // Y clip is repurposed to represent introns
+            AlignmentOperation::Yclip(l) => Op::new(Kind::Skip, l as u32),
+        }
+    }
+
+    let mut v = Vec::with_capacity(ops.len() / 16);
+    let mut prev = None;
+    let mut prev_len = 0;
+
+    for &op in ops {
+        if prev.is_none() || prev.unwrap() != op {
+            if let Some(p) = prev {
+                v.push(match_op(p, prev_len));
+            }
+            prev = Some(op);
+            prev_len = 1;
+        } else {
+            prev_len += 1;
+        }
+    }
+    if ops.len() > 0 {
+        v.push(match_op(prev.unwrap(), prev_len));
+    }
+    Cigar::from(v)
 }
