@@ -44,7 +44,10 @@ pub fn align_reads_from_file(
                     (
                         r.name.to_owned(),
                         sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32)
-                            .expect("Error in creating a SAM header reference sequence."),
+                            .expect(&format!(
+                            "Error in creating a SAM header reference sequence with name \"{}\".",
+                            r.name
+                        )),
                     )
                 })
                 .collect();
