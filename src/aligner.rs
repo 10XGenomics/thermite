@@ -186,6 +186,26 @@ pub fn align_reads_from_file(
                         write_paf(w, &paf)?;
                     }
                 }
+            } else {
+                // unmapped read
+                match writer {
+                    OutputWriter::Bam(_, _) | OutputWriter::Sam(_) => {
+                        let read_name = str::from_utf8(record.id())?;
+                        let record = sam::Record::builder()
+                            .set_read_name(read_name.parse()?)
+                            .set_flags(sam::record::Flags::UNMAPPED)
+                            .build()?;
+
+                        match writer {
+                            OutputWriter::Bam(ref mut w, ref header) => {
+                                w.write_sam_record(header.reference_sequences(), &record)?
+                            }
+                            OutputWriter::Sam(ref mut w) => w.write_record(&record)?,
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => (),
+                }
             }
         }
     }
