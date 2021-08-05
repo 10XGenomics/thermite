@@ -111,7 +111,8 @@ pub fn align_reads_from_file(
                                 "{},{}{},{}",
                                 tx.id,
                                 if tx.strand { '+' } else { '-' },
-                                aln.tx_aln.ystart,
+                                // 1-based position
+                                aln.tx_aln.ystart + 1,
                                 aln.tx_aln.cigar(false)
                             );
                             Data::try_from(vec![
@@ -130,6 +131,8 @@ pub fn align_reads_from_file(
                         let read_name = str::from_utf8(record.id())?;
                         let record = sam::Record::builder()
                             .set_read_name(read_name.parse()?)
+                            .set_sequence(str::from_utf8(&record.seq())?.parse()?)
+                            .set_quality_scores(str::from_utf8(record.qual().unwrap())?.parse()?)
                             .set_flags(flags)
                             .set_data(data)
                             .set_reference_sequence_name(aln.ref_name.parse()?)
@@ -196,6 +199,8 @@ pub fn align_reads_from_file(
                         let read_name = str::from_utf8(record.id())?;
                         let record = sam::Record::builder()
                             .set_read_name(read_name.parse()?)
+                            .set_sequence(str::from_utf8(&record.seq())?.parse()?)
+                            .set_quality_scores(str::from_utf8(record.qual().unwrap())?.parse()?)
                             .set_flags(sam::record::Flags::UNMAPPED)
                             .build()?;
 
@@ -281,8 +286,9 @@ fn convert_aln_index_to_genome(
     genome_aln.ylen = aln_ref.len;
     // need to convert interval to always be [left, right) regardless of strand
     if !aln_ref.strand {
+        let ystart = genome_aln.ystart;
         genome_aln.ystart = aln_ref.len - genome_aln.yend;
-        genome_aln.yend = aln_ref.len - genome_aln.ystart;
+        genome_aln.yend = aln_ref.len - ystart;
         genome_aln.operations.reverse();
     }
     GenomeAlignment {

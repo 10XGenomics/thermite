@@ -8,6 +8,12 @@ ref=test_ref
 
 # The minimum seed length.
 k=3
+# Minimum score.
+s=2
+# Minimum sum of the lengths of all seed hits.
+min_total_hit_len=3
+
+thermite_flags=-s $s -k $k --min-total-hit-len $(min_total_hit_len)
 
 SHELL=bash -e -o pipefail
 ifneq ($(shell command -v zsh),)
@@ -28,18 +34,22 @@ clean:
 .DELETE_ON_ERROR:
 .SECONDARY:
 
+# Index the fasta reference for random access.
+%.fasta.fai: %.fasta
+	samtools faidx $<
+
 # Index the reference genome.
-%.fasta.tai: %.fasta
-	thermite index -o $@ $<
+%.fasta.tai: %.fasta %.fasta.fai %.gtf
+	thermite index -o $@ $*.fasta $*.gtf
 
 # Align the query to the reference (output paf).
 %.paf: $(ref).fasta.tai %.fastq
-	thermite align -k$k -o $@ $^
+	thermite align $(thermite_flags) -o $@ $^
 
 # Align the query to the reference (output sam).
 %.sam: $(ref).fasta.tai %.fastq
-	thermite align -a -k$k -o $@ $^
+	thermite align -a $(thermite_flags) -o $@ $^
 
 # Align the query to the reference (output bam).
 %.bam: $(ref).fasta.tai %.fastq
-	thermite align -a -k$k -o $@ $^
+	thermite align -a $(thermite_flags) -o $@ $^

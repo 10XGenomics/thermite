@@ -1,0 +1,6 @@
+some_ref	.	gene	2	6	.	+	.	gene_id "some_ref_gene1"
+some_ref	.	transcript	2	6	.	+	.	gene_id "some_ref_gene1"; transcript_id "some_ref_tx1"
+some_ref	.	exon	2	6	.	+	.	gene_id "some_ref_gene1"; transcript_id "some_ref_tx1"
+another_seq	.	gene	8	12	.	-	.	gene_id "another_seq_gene1"
+another_seq	.	transcript	8	12	.	-	.	gene_id "another_seq_gene1"; transcript_id "another_seq_tx1"
+another_seq	.	exon	8	12	.	-	.	gene_id "another_seq_gene1"; transcript_id "another_seq_tx1"

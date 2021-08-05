@@ -133,8 +133,8 @@ impl Index {
                             .insert(Interval::new(exon_start..exon_end).unwrap(), exon_tx_idx);
 
                         Exon {
-                            start: e.start as usize,
-                            end: e.end as usize,
+                            start: exon_start as usize,
+                            end: exon_end as usize,
                             tx_idx: exon_tx_idx,
                         }
                     })

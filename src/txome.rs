@@ -10,7 +10,7 @@ pub struct Txome {
     pub exon_to_tx: IntervalTree<usize, usize>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tx {
     pub id: String,
     pub chrom: String,
@@ -20,13 +20,13 @@ pub struct Tx {
     pub gene_idx: usize,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gene {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Exon {
     pub start: usize,
     pub end: usize,
@@ -39,14 +39,14 @@ impl Exon {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TxHit {
     pub tx_idx: usize,
     pub hits: usize,
     pub total_len: usize,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GenomeAlignment {
     pub genome_aln: Alignment,
     pub tx_aln: Alignment,
