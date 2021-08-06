@@ -9,7 +9,7 @@ ref=test_ref
 # The minimum seed length.
 k=3
 # Minimum score.
-s=2
+s=3
 # Minimum sum of the lengths of all seed hits.
 min_total_hit_len=3
 

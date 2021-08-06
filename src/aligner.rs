@@ -143,7 +143,7 @@ pub fn align_reads_from_file(
                             .set_mapping_quality(sam::record::MappingQuality::from(255))
                             .set_cigar(to_noodles_cigar(&aln.genome_aln.operations))
                             .set_template_length(
-                                (aln.genome_aln.xend - aln.genome_aln.xstart) as i32,
+                                (aln.genome_aln.yend - aln.genome_aln.ystart) as i32,
                             )
                             .build()?;
 
@@ -230,7 +230,7 @@ pub fn align_read<'a>(
     min_total_hit_len: usize,
 ) -> Option<GenomeAlignment> {
     // TODO: tighten band width when good alignments are found
-    let mut aligner = Aligner::new(-2, -1, |a, b| if a == b { 1 } else { -1 }, min_seed_len, 8);
+    let mut aligner = Aligner::new(0, -1, |a, b| if a == b { 1 } else { -1 }, min_seed_len, 8);
     let tx_hits_map = index.intersect_transcripts(read, min_seed_len);
     let mut tx_hits = tx_hits_map.values().collect::<Vec<_>>();
     tx_hits.sort_unstable_by_key(|k| k.total_len);
@@ -258,10 +258,12 @@ pub fn align_read<'a>(
             convert_aln_index_to_genome(index, a, tx_hit.tx_idx, tx_aln)
         };
 
+        if genome_aln.genome_aln.score < min_aln_score {
+            continue;
+        }
+
         if let Some(ref mut a) = best_aln {
-            if genome_aln.genome_aln.score > min_aln_score
-                && genome_aln.genome_aln.score > a.genome_aln.score
-            {
+            if genome_aln.genome_aln.score > a.genome_aln.score {
                 *a = genome_aln;
             }
         } else {

@@ -12,3 +12,8 @@ introns_seq	.	exon	21	25	.	+	.	gene_id "introns_seq_gene1"; transcript_id "intro
 introns_seq	.	transcript	5	25	.	+	.	gene_id "introns_seq_gene1"; transcript_id "introns_seq_tx2"
 introns_seq	.	exon	5	8	.	+	.	gene_id "introns_seq_gene1"; transcript_id "introns_seq_tx2"
 introns_seq	.	exon	21	25	.	+	.	gene_id "introns_seq_gene1"; transcript_id "introns_seq_tx2"
+introns_revcomp	.	gene	5	25	.	-	.	gene_id "introns_revcomp_gene1"
+introns_revcomp	.	transcript	5	25	.	-	.	gene_id "introns_revcomp_gene1"; transcript_id "introns_revcomp_tx1"
+introns_revcomp	.	exon	5	8	.	-	.	gene_id "introns_revcomp_gene1"; transcript_id "introns_revcomp_tx1"
+introns_revcomp	.	exon	13	16	.	-	.	gene_id "introns_revcomp_gene1"; transcript_id "introns_revcomp_tx1"
+introns_revcomp	.	exon	21	25	.	-	.	gene_id "introns_revcomp_gene1"; transcript_id "introns_revcomp_tx1"

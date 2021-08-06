@@ -111,7 +111,7 @@ impl Index {
                 let strand = tx.strand == ReqStrand::Forward;
                 let tx_ref = &refs[name_to_ref[&NameStrand(tx.chrom.clone(), strand)]];
 
-                let exons = tx
+                let mut exons = tx
                     .exons
                     .iter()
                     .map(|e| {
@@ -139,6 +139,9 @@ impl Index {
                         }
                     })
                     .collect::<Vec<_>>();
+                if !strand {
+                    exons.reverse();
+                }
 
                 Tx {
                     id: tx.id,
