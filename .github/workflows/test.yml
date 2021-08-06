@@ -41,6 +41,8 @@ jobs:
         run: cargo check --all-targets
       - name: Run cargo build
         run: cargo build
+      - name: Install py requirements
+        run: pip install pysam
       - name: Run metric test
         run: |
           cd data/
