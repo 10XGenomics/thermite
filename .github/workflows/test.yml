@@ -40,9 +40,13 @@ jobs:
       - name: Run cargo check
         run: cargo check --all-targets
       - name: Run metric test
-        run: make metrics ref=GRCh38-2020-A-chrM
+        run: |
+          cd data/
+          make metrics ref=GRCh38-2020-A-chrM
       - uses: harupy/comment-on-pr@v0.1.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB.TOKEN }}
         with:
           path: comparison_metrics.txt
+      - name: Check if comparison metrics have changed
+        run: diff comparison_metrics.txt ../lib/testing/comparison_metrics.txt
