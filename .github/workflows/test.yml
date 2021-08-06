@@ -47,10 +47,10 @@ jobs:
         run: |
           cd data/
           make metrics ref=GRCh38-2020-A-chrM
-      - uses: harupy/comment-on-pr@master
+      - uses: machine-learning-apps/pr-comment@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB.TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          filename: comparison_metrics.txt
+          path: code-coverage.mdt
       - name: Check if comparison metrics have changed
         run: diff comparison_metrics.txt ../lib/testing/comparison_metrics.txt
