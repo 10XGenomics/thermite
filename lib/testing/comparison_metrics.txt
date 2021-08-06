@@ -1,0 +1,3 @@
+file1 identical alignment to ref fraction: 0.932334
+file2 identical alignment to ref fraction: 0.819994
+file1 and file2 identical alignments fraction: 2e-06
