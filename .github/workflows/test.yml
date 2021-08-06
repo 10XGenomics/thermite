@@ -39,6 +39,8 @@ jobs:
         run: cargo fmt -- --check
       - name: Run cargo check
         run: cargo check --all-targets
+      - name: Run cargo build
+        run: cargo build
       - name: Run metric test
         run: |
           cd data/
