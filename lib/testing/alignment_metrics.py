@@ -58,10 +58,17 @@ def main():
 
     for row1, row2 in zip(reader1, reader2):
         n_reads += 1
+        if reader1_type == "paf":
+            while row1[0].startswith("@"):
+                row1 = next(reader1)
+        if reader2_type == "paf":
+            while row2[0].startswith("@"):
+                row2 = next(reader2)
+
         if reader1_type == "paf" and reader2_type == "paf":
-            row1 = parse_paf_alignment(row1[:-1])
+            row1 = parse_paf_alignment(row1[0:12])
             n_in1_identical_align += paf_query_identical_to_reference(row1)
-            row2 = parse_paf_alignment(row2[:-1])
+            row2 = parse_paf_alignment(row2[0:12])
             n_in2_identical_align += paf_query_identical_to_reference(row2)
             n_concordant_align += row1 == row2
         elif reader1_type == "sam" and reader2_type == "sam":
@@ -70,18 +77,20 @@ def main():
             n_concordant_align += row1 == row2  # will this work?
         elif reader1_type == "sam" and reader2_type == "paf":
             n_in1_identical_align += sam_query_identical_to_reference(row1)
-            row2 = parse_paf_alignment(row2[:-1])
+            row2 = parse_paf_alignment(row2[0:12])
             n_in2_identical_align += paf_query_identical_to_reference(row2)
             n_concordant_align += compare_sam_to_paf(row1, row2)
         elif reader1_type == "paf" and reader2_type == "sam":
-            row1 = parse_paf_alignment(row1[:-1])
+            row1 = parse_paf_alignment(row1[0:12])
             n_in1_identical_align += paf_query_identical_to_reference(row1)
             n_in2_identical_align += sam_query_identical_to_reference(row2)
             n_concordant_align += compare_sam_to_paf(row2, row1)
 
-    print(f"paf1 identical alignment to ref fraction: {n_in1_identical_align/n_reads}")
-    print(f"paf2 identical alignment to ref fraction: {n_in2_identical_align/n_reads}")
-    print(f"paf1 and paf2 identical alignments fraction: {n_concordant_align/n_reads}")
+    print(f"file1 identical alignment to ref fraction: {n_in1_identical_align/n_reads}")
+    print(f"file2 identical alignment to ref fraction: {n_in2_identical_align/n_reads}")
+    print(
+        f"file1 and file2 identical alignments fraction: {n_concordant_align/n_reads}"
+    )
 
 
 def get_alignment_reader(path: str) -> Iterable:
