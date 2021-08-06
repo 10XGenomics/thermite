@@ -47,7 +47,7 @@ jobs:
         run: |
           cd data/
           make metrics ref=GRCh38-2020-A-chrM
-      - uses: harupy/comment-on-pr@v0.1.0
+      - uses: harupy/comment-on-pr@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB.TOKEN }}
         with:
