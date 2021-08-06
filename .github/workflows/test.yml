@@ -51,6 +51,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          path: comparison_metrics.txt
+          path: data/comparison_metrics.txt
       - name: Check if comparison metrics have changed
-        run: diff comparison_metrics.txt ../lib/testing/comparison_metrics.txt
+        run: diff data/comparison_metrics.txt lib/testing/comparison_metrics.txt
