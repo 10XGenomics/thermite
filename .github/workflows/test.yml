@@ -15,7 +15,6 @@ jobs:
       - name: Checkout git repository
         uses: actions/checkout@master
       - name: Configure git credentials
-        if: env.run_tests
         run: |
           echo 'https://10xbuild:${{secrets.TENX_DEV_TOKEN}}@github.com' >~/.git-credentials
           chmod 600 ~/.git-credentials
