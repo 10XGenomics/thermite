@@ -15,7 +15,6 @@ jobs:
       - name: Checkout git repository
         uses: actions/checkout@master
       - name: Configure git credentials
-        if: env.run_tests
         run: |
           echo 'https://10xbuild:${{secrets.TENX_DEV_TOKEN}}@github.com' >~/.git-credentials
           chmod 600 ~/.git-credentials
@@ -39,3 +38,18 @@ jobs:
         run: cargo fmt -- --check
       - name: Run cargo check
         run: cargo check --all-targets
+      - name: Run cargo build
+        run: cargo build
+      - name: Install py requirements
+        run: pip install pysam
+      - name: Run metric test
+        run: |
+          cd data/
+          make metrics ref=GRCh38-2020-A-chrM
+      - uses: machine-learning-apps/pr-comment@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path: data/comparison_metrics.txt
+      - name: Check if comparison metrics have changed
+        run: diff data/comparison_metrics.txt lib/testing/comparison_metrics.txt
