@@ -111,6 +111,8 @@ pub fn lift_tx_to_genome(tx_aln: &Alignment, tx: &Tx) -> Alignment {
 mod test {
     use super::*;
 
+    use bio::alignment::AlignmentMode;
+
     #[test]
     fn test_lift_tx_to_genome() {
         let exons = vec![
@@ -168,7 +170,7 @@ mod test {
             operations: correct_ops,
             mode: AlignmentMode::Semiglobal,
         };
-        let genome_aln = lift_tx_to_genome(aln, &tx, 0);
-        assert_eq!(genome_aln.aln, correct_aln);
+        let genome_aln = lift_tx_to_genome(&aln, &tx);
+        assert_eq!(genome_aln, correct_aln);
     }
 }

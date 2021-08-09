@@ -1,7 +1,7 @@
 /target
 
 data/**.bam
+data/**.fai
 data/**.paf
 data/**.sam
 data/**.tai
-data/**.fai

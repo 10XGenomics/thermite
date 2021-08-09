@@ -7,7 +7,7 @@ use anyhow::Result;
 use bincode;
 
 use std::ffi::OsStr;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::path::Path;
@@ -26,12 +26,11 @@ fn main() -> Result<()> {
         SubCommand::Index(index_opts) => {
             let index =
                 index::Index::create_from_files(&index_opts.reference, &index_opts.annotations)?;
-            let serialized_index = bincode::serialize(&index)?;
-            let mut index_file: Box<dyn Write> = match &index_opts.index[..] {
+            let index_file: Box<dyn Write> = match &index_opts.index[..] {
                 "-" => Box::new(io::stdout()),
                 _ => Box::new(File::create(&index_opts.index)?),
             };
-            index_file.write_all(&serialized_index)?;
+            bincode::serialize_into(index_file, &index)?;
         }
         SubCommand::Align(align_opts) => {
             let output_fmt = if align_opts.bam {
@@ -46,9 +45,8 @@ fn main() -> Result<()> {
                 OutputFormat::Paf
             };
 
-            let serialized_index = fs::read(&align_opts.index)?;
-            let index = bincode::deserialize(&serialized_index)?;
-            drop(serialized_index);
+            let index_file = File::open(&align_opts.index)?;
+            let index = bincode::deserialize_from(index_file)?;
 
             aligner::align_reads_from_file(
                 &index,
