@@ -86,7 +86,7 @@ pub struct Align {
     #[clap(short = 'o', long = "output", default_value = "-")]
     pub output: String,
     /// Minimum length of an exact seed match
-    #[clap(short = 'k', long, default_value = "30")]
+    #[clap(short = 'k', long, default_value = "20")]
     pub min_seed_len: usize,
     /// Minimum alignment score
     #[clap(short = 's', long, default_value = "60")]
