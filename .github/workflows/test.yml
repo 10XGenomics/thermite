@@ -45,7 +45,7 @@ jobs:
       - name: Run metric test
         run: |
           cd data/
-          make metrics ref=GRCh38-2020-A-chrM
+          make metrics dataset=chrM
       - uses: machine-learning-apps/pr-comment@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

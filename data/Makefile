@@ -3,20 +3,33 @@
 # Path to the thermite executable.
 export PATH:=../target/debug:${PATH}
 
-# The reference genome.
-ref=test_ref
+dataset=test
 
-# The minimum seed length.
-k=10
-
-# Minimum score.
-s=3
-
-# Minimum sum of the lengths of all seed hits.
-min_total_hit_len=3
-
-# Flags passed to Thermite.
-thermite_flags=-s$s -k$k --min-total-hit-len=$(min_total_hit_len)
+ifeq ($(dataset),test)
+	# Use integration test data.
+	# Set the testing reference genome name.
+	ref=test_ref
+	# Set the testing reads file as the input.
+	query=test_query.fastq
+	# Set the name of the output files.
+	aln=test_query
+	# Set the file to compare to for metrics.
+	compare=
+	# Set flags for indexing.
+	index_flags=
+	# Set flags for alignment.
+	aln_flags=-s3 -k3 --min-total-hit-len=3
+else ifeq ($(dataset),chrM)
+	# Use the human mitochondrial genome data.
+	ref=GRCh38-2020-A-chrM
+	query=namesorted_PBMC_10k_500k_reads_chrM.fastq.gz
+	aln=thermite_PBMC_10k_500k_reads_chrM
+	compare=cellranger_namesorted_PBMC_10k_500k_reads_chrM.paf
+	index_flags=
+	aln_flags=-s60 -k30 --min-total-hit-len=40
+else
+	$(error The dataset name $(dataset) is invalid!)
+endif
 
 SHELL=bash -e -o pipefail
 ifneq ($(shell command -v zsh),)
@@ -28,42 +41,40 @@ export TIMEFMT=time user=%U system=%S elapsed=%E cpu=%P memory=%M job=%J
 endif
 
 # Test the Thermite aligner.
-all: test_query.paf test_query.sam test_query.bam
+all: $(aln).paf $(aln).sam $(aln).bam
+
+# Alignment metrics.
+metrics: comparison_metrics.txt
 
 # Remove test output.
 clean:
-	rm -f test_query.paf test_query.sam test_query.bam
-	rm -f comparison_metrics.txt thermite_PBMC_10k_500k_reads_chrM.paf GRCh38-2020-A-chrM.fasta.tai
-
-# Metrics
-metrics: thermite_PBMC_10k_500k_reads_chrM.paf comparison_metrics.txt
+	rm -f $(ref).fasta.fai $(ref).fasta.tai
+	rm -f $(aln).paf $(aln).sam $(aln).bam
+	rm -f comparison_metrics.txt
 
 .DELETE_ON_ERROR:
 .SECONDARY:
 
 # Index the fasta reference for random access.
-%.fasta.fai: %.fasta
+$(ref).fasta.fai: $(ref).fasta
 	samtools faidx $<
 
 # Index the reference genome.
-%.fasta.tai: %.fasta %.fasta.fai %.gtf
-	thermite index -o $@ $*.fasta $*.gtf
+$(ref).fasta.tai: $(ref).fasta $(ref).fasta.fai $(ref).gtf
+	thermite index $(index_flags) -o $@ $< $(ref).gtf
 
 # Align the query to the reference (output paf).
-%.paf: $(ref).fasta.tai %.fastq
-	thermite align $(thermite_flags) -o $@ $^
+$(aln).paf: $(ref).fasta.tai $(query)
+	thermite align $(aln_flags) -o $@ $^
 
 # Align the query to the reference (output sam).
-%.sam: $(ref).fasta.tai %.fastq
-	thermite align -a $(thermite_flags) -o $@ $^
+$(aln).sam: $(ref).fasta.tai $(query)
+	thermite align -a $(aln_flags) -o $@ $^
 
 # Align the query to the reference (output bam).
-%.bam: $(ref).fasta.tai %.fastq
-	thermite align -a $(thermite_flags) -o $@ $^
+$(aln).bam: $(ref).fasta.tai $(query)
+	thermite align -a $(aln_flags) -o $@ $^
 
-# Get STAR comparison metrics
-comparison_metrics.txt: thermite_PBMC_10k_500k_reads_chrM.paf cellranger_namesorted_PBMC_10k_500k_reads_chrM.paf
-	python ../lib/testing/alignment_metrics.py cellranger_namesorted_PBMC_10k_500k_reads_chrM.paf $< > $@
-
-thermite_PBMC_10k_500k_reads_chrM.paf: $(ref).fasta.tai namesorted_PBMC_10k_500k_reads_chrM.fastq.gz
-	thermite align $(thermite_flags) -o $@ $^
+# Get STAR comparison metrics.
+comparison_metrics.txt: $(aln).paf $(compare)
+	python ../lib/testing/alignment_metrics.py $(compare) $< > $@
