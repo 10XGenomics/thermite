@@ -48,14 +48,14 @@ pub struct TxHit {
 
 #[derive(Debug, Clone)]
 pub struct GenomeAlignment {
-    pub genome_aln: Alignment,
+    pub gx_aln: Alignment,
     pub tx_aln: Alignment,
     pub tx_idx: usize,
     pub ref_name: String,
     pub strand: bool,
 }
 
-pub fn lift_tx_to_genome(tx_aln: &Alignment, tx: &Tx) -> Alignment {
+pub fn lift_tx_to_gx(tx_aln: &Alignment, tx: &Tx) -> Alignment {
     let mut aln = tx_aln.clone();
     aln.operations.clear();
 
@@ -114,7 +114,7 @@ mod test {
     use bio::alignment::AlignmentMode;
 
     #[test]
-    fn test_lift_tx_to_genome() {
+    fn test_lift_tx_to_gx() {
         let exons = vec![
             Exon {
                 start: 3,
@@ -170,12 +170,12 @@ mod test {
             operations: correct_ops,
             mode: AlignmentMode::Semiglobal,
         };
-        let genome_aln = lift_tx_to_genome(&aln, &tx);
-        assert_eq!(genome_aln, correct_aln);
+        let gx_aln = lift_tx_to_gx(&aln, &tx);
+        assert_eq!(gx_aln, correct_aln);
     }
 
     #[test]
-    fn test_lift_tx_to_genome_insert_end() {
+    fn test_lift_tx_to_gx_insert_end() {
         let exons = vec![Exon {
             start: 3,
             end: 6,
@@ -221,7 +221,7 @@ mod test {
             operations: correct_ops,
             mode: AlignmentMode::Semiglobal,
         };
-        let genome_aln = lift_tx_to_genome(&aln, &tx);
-        assert_eq!(genome_aln, correct_aln);
+        let gx_aln = lift_tx_to_gx(&aln, &tx);
+        assert_eq!(gx_aln, correct_aln);
     }
 }
