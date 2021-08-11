@@ -48,16 +48,12 @@ metrics: comparison_metrics.txt
 
 # Remove test output.
 clean:
-	rm -f $(ref).fasta.fai $(ref).fasta.tai
+	rm -f $(ref).fasta.tai
 	rm -f $(aln).paf $(aln).sam $(aln).bam
 	rm -f comparison_metrics.txt
 
 .DELETE_ON_ERROR:
 .SECONDARY:
-
-# Index the fasta reference for random access.
-$(ref).fasta.fai: $(ref).fasta
-	samtools faidx $<
 
 # Index the reference genome.
 $(ref).fasta.tai: $(ref).fasta $(ref).fasta.fai $(ref).gtf

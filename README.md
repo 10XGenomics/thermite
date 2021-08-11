@@ -2,6 +2,11 @@
 RNA aligner in Rust.
 
 ## Running
+First:
+```
+cargo build
+```
+
 Generating PAF, SAM, and BAM alignments:
 ```
 make -C data
