@@ -89,7 +89,7 @@ pub struct Align {
     #[clap(short = 'k', long, default_value = "20")]
     pub min_seed_len: usize,
     /// Minimum alignment score
-    #[clap(short = 's', long, default_value = "60")]
+    #[clap(short = 's', long, default_value = "20")]
     pub min_aln_score: i32,
     /// Minimum total seed hit length (sum of the lengths of all seed hits)
     #[clap(long, default_value = "40")]

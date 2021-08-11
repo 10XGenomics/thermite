@@ -78,7 +78,7 @@ pub fn lift_tx_to_genome(tx_aln: &Alignment, tx: &Tx) -> Alignment {
 
     while op_idx < tx_aln.operations.len() {
         // TODO: edge case: extra exon will be included when last op is insert and it crosses an exon boundary
-        if exon_sum + tx.exons[exon_idx].len() <= i {
+        if exon_idx + 1 < tx.exons.len() && exon_sum + tx.exons[exon_idx].len() <= i {
             exon_sum += tx.exons[exon_idx].len();
             exon_idx += 1;
             // intron gap
@@ -167,6 +167,59 @@ mod test {
             xend: 3,
             ylen: 15,
             xlen: 3,
+            operations: correct_ops,
+            mode: AlignmentMode::Semiglobal,
+        };
+        let genome_aln = lift_tx_to_genome(&aln, &tx);
+        assert_eq!(genome_aln, correct_aln);
+    }
+
+    #[test]
+    fn test_lift_tx_to_genome_insert_end() {
+        let exons = vec![
+            Exon {
+                start: 3,
+                end: 6,
+                tx_idx: 0,
+            }
+        ];
+        let tx = Tx {
+            id: "".to_owned(),
+            chrom: "".to_owned(),
+            strand: true,
+            exons,
+            seq: Vec::new(),
+            gene_idx: 0,
+        };
+        let ops = vec![
+            AlignmentOperation::Match,
+            AlignmentOperation::Subst,
+            AlignmentOperation::Ins,
+        ];
+        let aln = Alignment {
+            score: 0,
+            ystart: 1,
+            xstart: 0,
+            yend: 3,
+            xend: 2,
+            ylen: 15,
+            xlen: 2,
+            operations: ops,
+            mode: AlignmentMode::Semiglobal,
+        };
+        let correct_ops = vec![
+            AlignmentOperation::Match,
+            AlignmentOperation::Subst,
+            AlignmentOperation::Ins,
+        ];
+        let correct_aln = Alignment {
+            score: 0,
+            ystart: 4,
+            xstart: 0,
+            yend: 6,
+            xend: 2,
+            ylen: 15,
+            xlen: 2,
             operations: correct_ops,
             mode: AlignmentMode::Semiglobal,
         };

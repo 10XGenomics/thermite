@@ -5,3 +5,4 @@ data/**.fai
 data/**.paf
 data/**.sam
 data/**.tai
+data/comparison_metrics.txt
