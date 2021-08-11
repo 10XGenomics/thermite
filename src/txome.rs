@@ -176,13 +176,11 @@ mod test {
 
     #[test]
     fn test_lift_tx_to_genome_insert_end() {
-        let exons = vec![
-            Exon {
-                start: 3,
-                end: 6,
-                tx_idx: 0,
-            }
-        ];
+        let exons = vec![Exon {
+            start: 3,
+            end: 6,
+            tx_idx: 0,
+        }];
         let tx = Tx {
             id: "".to_owned(),
             chrom: "".to_owned(),
