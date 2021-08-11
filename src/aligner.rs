@@ -16,8 +16,10 @@ use crate::aln_writer::*;
 use crate::index::*;
 use crate::txome::*;
 
+/// Kmers of a transcript sequence.
 type Kmers<'a> = HashMapFx<&'a [u8], Vec<u32>>;
 
+/// Align reads from a fastq file and output the alignments in paf, sam, or bam format.
 pub fn align_reads_from_file(
     index: &Index,
     query_paths: &[String],
@@ -119,6 +121,7 @@ pub fn align_reads_from_file(
     Ok(())
 }
 
+/// Attempt to align a single read and return the alignment if it is found.
 pub fn align_read<'a>(
     index: &'a Index,
     tx_kmer_cache: &mut [Option<Kmers<'a>>],
@@ -167,13 +170,16 @@ pub fn align_read<'a>(
     best_aln
 }
 
+/// Lift a transcriptome alignment to a genome alignment within a specific chromosome.
 fn tx_to_gx_aln(index: &Index, tx_aln: Alignment, tx_idx: usize) -> GenomeAlignment {
     // lift to concatenated reference coordinates
     let lifted_aln = lift_tx_to_gx(&tx_aln, &index.txome().txs[tx_idx]);
-    // convert concatenated genome coordinates to coordinates within some genome
+    // convert concatenated genome coordinates to coordinates within some chromosome
     lifted_aln_to_gx_aln(index, lifted_aln, tx_idx, tx_aln)
 }
 
+/// Convert an alignment that is lifted to the concatenated reference to be within
+/// a specific chromosome.
 fn lifted_aln_to_gx_aln(
     index: &Index,
     lifted_aln: Alignment,
@@ -182,7 +188,7 @@ fn lifted_aln_to_gx_aln(
 ) -> GenomeAlignment {
     // TODO: could just look up chromosome by using transcript
     let (aln_ref, _ref_idx) = index.idx_to_ref(lifted_aln.ystart);
-    // convert alignments from concatenated reference coords to genome coords
+    // convert alignments from concatenated reference coords to chromosome coords
     let gx_aln = if aln_ref.strand {
         Alignment {
             ystart: lifted_aln.ystart - aln_ref.start_idx,

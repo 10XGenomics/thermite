@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use bio::alignment::{Alignment, AlignmentOperation};
 use bio::data_structures::interval_tree::IntervalTree;
 
+/// A transcriptome that holds all the genes and transcripts.
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
     pub genes: Vec<Gene>,
@@ -10,6 +11,7 @@ pub struct Txome {
     pub exon_to_tx: IntervalTree<usize, usize>,
 }
 
+/// A single transcript and its associated information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tx {
     pub id: String,
@@ -20,12 +22,14 @@ pub struct Tx {
     pub gene_idx: usize,
 }
 
+/// A single gene.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gene {
     pub id: String,
     pub name: String,
 }
 
+/// A single exon.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Exon {
     pub start: usize,
@@ -34,11 +38,13 @@ pub struct Exon {
 }
 
 impl Exon {
+    /// Calculate the length of the exon.
     pub fn len(&self) -> usize {
         self.end - self.start
     }
 }
 
+/// A transcript hit that is used when intersecting query reads with exons and their transcripts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TxHit {
     pub tx_idx: usize,
@@ -46,6 +52,10 @@ pub struct TxHit {
     pub total_len: usize,
 }
 
+/// Represents an alignment within the genome.
+///
+/// This also contains the transcriptome alignment from before this alignment
+/// is lifted to genome coordinates.
 #[derive(Debug, Clone)]
 pub struct GenomeAlignment {
     pub gx_aln: Alignment,
@@ -55,6 +65,11 @@ pub struct GenomeAlignment {
     pub strand: bool,
 }
 
+/// Lift a transcriptome alignment to a concatenated reference alignment.
+///
+/// Note that the alignment coordinates are for the concatenated reference
+/// with all the chromosomes. This will later need to be converted to be relative
+/// to a specific reference (chromosome).
 pub fn lift_tx_to_gx(tx_aln: &Alignment, tx: &Tx) -> Alignment {
     let mut aln = tx_aln.clone();
     aln.operations.clear();

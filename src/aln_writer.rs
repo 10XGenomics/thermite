@@ -11,6 +11,7 @@ use std::{fmt, str};
 use crate::index::Index;
 use crate::txome::GenomeAlignment;
 
+/// Supported alignment output formats.
 #[derive(Copy, Clone, PartialEq)]
 pub enum OutputFormat {
     Bam,
@@ -18,12 +19,14 @@ pub enum OutputFormat {
     Paf,
 }
 
+/// Specific writers for different output formats.
 pub enum OutputWriter {
     Bam(bam::Writer<Box<dyn Write>>, sam::Header),
     Sam(sam::Writer<Box<dyn Write>>),
     Paf(Box<dyn Write>),
 }
 
+/// A single paf record that corresponds to a single alignment.
 #[derive(Clone, PartialEq)]
 pub struct PafEntry<'a> {
     pub query_name: &'a [u8],
@@ -41,6 +44,7 @@ pub struct PafEntry<'a> {
 }
 
 impl<'a> PafEntry<'a> {
+    /// Create a new paf entry based on a genome alignment.
     pub fn new(query_name: &'a [u8], query_seq: &[u8], aln: &'a GenomeAlignment) -> Result<Self> {
         let num_match = aln
             .gx_aln
@@ -98,11 +102,13 @@ impl<'a> fmt::Display for PafEntry<'a> {
     }
 }
 
+/// Write out a paf entry.
 pub fn write_paf(writer: &mut dyn Write, paf_entry: &PafEntry) -> Result<()> {
     writeln!(writer, "{}", paf_entry)?;
     Ok(())
 }
 
+/// Create a new sam record based on a genome alignment.
 pub fn aln_to_sam_record(
     index: &Index,
     query_name: &[u8],
@@ -165,6 +171,7 @@ pub fn aln_to_sam_record(
         .build()?)
 }
 
+/// Create a new sam record for an unmapped read.
 pub fn unmapped_sam_record(
     query_name: &[u8],
     query_seq: &[u8],
@@ -179,6 +186,7 @@ pub fn unmapped_sam_record(
         .build()?)
 }
 
+/// Create a sam header for a certain reference index.
 pub fn build_sam_header(index: &Index) -> Result<sam::Header> {
     let sam_refs = index
         .refs()
@@ -201,6 +209,7 @@ pub fn build_sam_header(index: &Index) -> Result<sam::Header> {
         .build())
 }
 
+/// Convert Rust-bio's CIGAR format to Noodles-sam's run-length encoded format.
 fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
     use sam::record::{
         cigar::op::{Kind, Op},

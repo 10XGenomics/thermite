@@ -23,6 +23,11 @@ use std::str;
 
 use crate::txome::*;
 
+/// An index of a set of reference sequences, along with the transcriptome.
+///
+/// Multiple different reference sequences (chromosomes) are concatenated internally,
+/// so it is important to convert the concatenated coordinates back to coordinates within
+/// a specific chromosome when outputting alignments.
 #[derive(Serialize, Deserialize)]
 pub struct Index {
     refs: Vec<Ref>,
@@ -33,6 +38,10 @@ pub struct Index {
 }
 
 impl Index {
+    /// Create an index from a reference fasta file and its annotations file.
+    ///
+    /// The fasta file is expected to be already indexed, so a .fasta.fai file exists
+    /// with the same file name.
     pub fn create_from_files(ref_path: &str, annot_path: &str) -> Result<Self> {
         let mut ref_reader = parse_fastx_file(ref_path)?;
         let mut refs = Vec::with_capacity(8);
@@ -169,6 +178,9 @@ impl Index {
         })
     }
 
+    /// Find all intersecting transcripts to a query sequence.
+    ///
+    /// The transcripts use concatenated reference coordinates.
     pub fn intersect_transcripts(
         &self,
         query: &[u8],
@@ -200,6 +212,9 @@ impl Index {
         tx_hits
     }
 
+    /// Find a single longest supermaximal exact match (SMEM) for a query sequence.
+    ///
+    /// The MEMs use concatenated reference coordinates.
     pub fn longest_smem(&self, query: &[u8], min_seed_len: usize) -> Option<Mem> {
         let mut max_smem = None;
         let intervals = self.fmd.all_smems(query, min_seed_len);
@@ -221,20 +236,25 @@ impl Index {
         max_smem
     }
 
+    /// Get the reference (chromosome) that contains a concatenated coordinate (index)
+    /// and convert it to an index within the reference.
     pub fn idx_to_ref(&self, idx: usize) -> (&Ref, usize) {
         let ref_idx = self.refs.partition_point(|x| x.end_idx <= idx);
         (&self.refs[ref_idx], idx - self.refs[ref_idx].start_idx)
     }
 
+    /// Get the references (chromosomes).
     pub fn refs(&self) -> &[Ref] {
         &self.refs
     }
 
+    /// Get the transcriptome.
     pub fn txome(&self) -> &Txome {
         &self.txome
     }
 }
 
+/// A single maximal exact match.
 #[derive(Copy, Clone, PartialEq)]
 pub struct Mem {
     pub ref_idx: usize,
@@ -242,6 +262,7 @@ pub struct Mem {
     pub len: usize,
 }
 
+/// A single reference (chromosome).
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ref {
     pub name: String,
