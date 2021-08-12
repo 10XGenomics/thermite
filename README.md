@@ -2,8 +2,19 @@
 RNA aligner in Rust.
 
 ## Running
+First:
 ```
-cd data
-cargo run -- index -o test_ref.fasta.tai test_ref.fasta
-cargo run -- align -k 3 -o test_query.paf test_ref.fasta.tai test_query.fastq
+cargo build
+```
+
+Generating PAF, SAM, and BAM alignments:
+```
+make -C data
+# or
+make -C data dataset=chrM
+```
+
+Computing metrics:
+```
+make -C data metrics dataset=chrM
 ```
