@@ -6,7 +6,7 @@ use noodles::{bam, sam};
 
 use bio::alignment::pairwise::{banded::Aligner, Scoring};
 use bio::alignment::sparse::{hash_kmers, HashMapFx};
-use bio::alignment::Alignment;
+use bio::alignment::{Alignment, AlignmentOperation};
 
 use std::cmp;
 use std::collections::{hash_map::Entry, HashMap};
@@ -150,22 +150,26 @@ pub fn align_read<'a>(
         let tx_aln = {
             // TODO: reuse aligner, just change bandwidth
             // align locally in the transcriptome and allow suffix of the read to be clipped
-            let scoring = Scoring::from_scores(-1, -1, 1, -1)
-                .yclip(0)
-                .xclip_suffix(-10);
+            let scoring = Scoring::from_scores(-1, -1, 1, -1).yclip(0).xclip_suffix(0);
             let mut aligner = Aligner::with_scoring(scoring, align_opts.min_seed_len, band_width);
-            aligner.custom_with_prehash(
+            let mut aln = aligner.custom_with_prehash(
                 read,
                 &tx.seq,
                 tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap(),
-            )
+            );
+            aln.operations.retain(|op| match op {
+                AlignmentOperation::Yclip(_) => false,
+                _ => true,
+            });
+            aln
         };
-        let gx_aln = tx_to_gx_aln(index, tx_aln, tx_hit.tx_idx);
 
         // use the running max alignment score to discard low scoring alignments early
-        if gx_aln.gx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32) {
+        if tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32) {
             continue;
         }
+
+        let gx_aln = tx_to_gx_aln(index, tx_aln, tx_hit.tx_idx);
 
         // ensure that only the max scoring alignment is kept when there are duplicates
         match coord_score.entry((gx_aln.ref_name.clone(), gx_aln.strand, gx_aln.gx_aln.ystart)) {
@@ -187,12 +191,10 @@ pub fn align_read<'a>(
         gx_alns.push(gx_aln);
     }
 
+    gx_alns.retain(|gx_aln| {
+        gx_aln.gx_aln.score >= max_aln_score - (align_opts.multimap_score_range as i32)
+    });
     gx_alns
-        .into_iter()
-        .filter(|gx_aln| {
-            gx_aln.gx_aln.score >= max_aln_score - (align_opts.multimap_score_range as i32)
-        })
-        .collect()
 }
 
 /// Lift a transcriptome alignment to a genome alignment within a specific chromosome.
