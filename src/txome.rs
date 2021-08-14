@@ -63,6 +63,7 @@ pub struct GenomeAlignment {
     pub tx_idx: usize,
     pub ref_name: String,
     pub strand: bool,
+    pub primary: bool,
 }
 
 /// Lift a transcriptome alignment to a concatenated reference alignment.

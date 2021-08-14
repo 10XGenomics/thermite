@@ -45,7 +45,12 @@ pub struct PafEntry<'a> {
 
 impl<'a> PafEntry<'a> {
     /// Create a new paf entry based on a genome alignment.
-    pub fn new(query_name: &'a [u8], query_seq: &[u8], aln: &'a GenomeAlignment) -> Result<Self> {
+    pub fn new(
+        query_name: &'a [u8],
+        query_seq: &[u8],
+        aln: &'a GenomeAlignment,
+        multimap: usize,
+    ) -> Result<Self> {
         let num_match = aln
             .gx_aln
             .operations
@@ -76,7 +81,7 @@ impl<'a> PafEntry<'a> {
             target_end: aln.gx_aln.yend,
             num_match,
             num_match_gap,
-            map_qual: 255,
+            map_qual: multimapq(multimap),
         })
     }
 }
@@ -115,6 +120,7 @@ pub fn aln_to_sam_record(
     query_seq: &[u8],
     query_qual: &[u8],
     aln: &GenomeAlignment,
+    multimap: usize,
 ) -> Result<sam::Record> {
     use sam::record::{
         data::{
@@ -124,11 +130,17 @@ pub fn aln_to_sam_record(
         Data, Flags,
     };
 
-    let flags = if aln.strand {
-        Flags::empty()
-    } else {
-        Flags::REVERSE_COMPLEMENTED
+    let flags = {
+        let mut f = Flags::empty();
+        if !aln.strand {
+            f |= Flags::REVERSE_COMPLEMENTED;
+        }
+        if !aln.primary {
+            f |= Flags::SECONDARY;
+        }
+        f
     };
+    let mapq = multimapq(multimap);
     let data = {
         let tx = &index.txome().txs[aln.tx_idx];
         let gene = &index.txome().genes[tx.gene_idx];
@@ -141,6 +153,8 @@ pub fn aln_to_sam_record(
             aln.tx_aln.cigar(false)
         );
         Data::try_from(vec![
+            Field::new(Tag::AlignmentScore, Value::Int(aln.gx_aln.score as i64)),
+            Field::new(Tag::AlignmentHitCount, Value::Int(multimap as i64)),
             Field::new(Tag::Other("TX".to_owned()), Value::String(tx_val)),
             Field::new(
                 Tag::Other("GX".to_owned()),
@@ -165,7 +179,7 @@ pub fn aln_to_sam_record(
         .set_position(sam::record::Position::try_from(
             (aln.gx_aln.ystart + 1) as i32,
         )?)
-        .set_mapping_quality(sam::record::MappingQuality::from(255))
+        .set_mapping_quality(sam::record::MappingQuality::from(mapq))
         .set_cigar(to_noodles_cigar(&aln.gx_aln.operations))
         .set_template_length((aln.gx_aln.yend - aln.gx_aln.ystart) as i32)
         .build()?)
@@ -247,4 +261,21 @@ fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
         v.push(match_op(prev.unwrap(), prev_len));
     }
     Cigar::from(v)
+}
+
+/// Compute the MAPQ of multimapping reads.
+///
+/// n == 1 -> 255
+/// n == 2 -> 3
+/// n == 3 -> 2
+/// n == 4 -> 1
+/// n >= 5 -> 0
+fn multimapq(n: usize) -> u8 {
+    if n <= 1 {
+        255
+    } else if n >= 5 {
+        0
+    } else {
+        (-10.0 * (1.0 - 1.0 / (n as f32)).log10()).round() as u8
+    }
 }

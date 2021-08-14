@@ -94,6 +94,7 @@ pub fn align_reads_from_file(
                             &record.seq(),
                             &record.qual().unwrap(),
                             aln,
+                            alns.len(),
                         )?;
                         w.write_record(&record)?;
                     }
@@ -104,11 +105,12 @@ pub fn align_reads_from_file(
                             &record.seq(),
                             &record.qual().unwrap(),
                             aln,
+                            alns.len(),
                         )?;
                         w.write_sam_record(header.reference_sequences(), &record)?;
                     }
                     OutputWriter::Paf(ref mut w) => {
-                        let paf = PafEntry::new(&record.id(), &record.seq(), aln)?;
+                        let paf = PafEntry::new(&record.id(), &record.seq(), aln, alns.len())?;
                         write_paf(w, &paf)?;
                     }
                 }
@@ -194,6 +196,13 @@ pub fn align_read<'a>(
     gx_alns.retain(|gx_aln| {
         gx_aln.gx_aln.score >= max_aln_score - (align_opts.multimap_score_range as i32)
     });
+    // pick an arbitrary max scoring alignment as the primary alignment
+    if let Some(gx_aln) = gx_alns
+        .iter_mut()
+        .find(|gx_aln| gx_aln.gx_aln.score == max_aln_score)
+    {
+        gx_aln.primary = true;
+    }
     gx_alns
 }
 
@@ -239,6 +248,7 @@ fn lifted_aln_to_gx_aln(
         tx_idx,
         ref_name: aln_ref.name.to_owned(),
         strand: aln_ref.strand,
+        primary: false,
     }
 }
 
