@@ -252,10 +252,15 @@ fn lifted_aln_to_gx_aln(
     }
 }
 
+/// Struct to conveniently pass around many alignment parameters.
 #[derive(Debug)]
 pub struct AlignOpts {
+    /// Min length of a SMEM seed.
     pub min_seed_len: usize,
+    /// Min alignment score as a percentage of read length
     pub min_aln_score_percent: f32,
+    /// Min total length of all seed hits for a read.
     pub min_total_hit_len: usize,
+    /// Range of alignment scores below the max score to output.
     pub multimap_score_range: usize,
 }
