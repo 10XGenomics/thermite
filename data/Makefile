@@ -18,7 +18,7 @@ ifeq ($(dataset),test)
 	# Set flags for indexing.
 	index_flags=
 	# Set flags for alignment.
-	aln_flags=-s3 -k3 --min-total-hit-len=3
+	aln_flags=-k3 --min-total-hit-len=3
 else ifeq ($(dataset),chrM)
 	# Use the human mitochondrial genome data.
 	ref=GRCh38-2020-A-chrM
@@ -34,7 +34,7 @@ else ifeq ($(dataset), chr21)
 	aln=thermite_pbmc10k_chr21_500k_reads
 	compare=cellranger_pbmc10k_chr21_500k_reads.bam
 	index_flags=
-	aln_flags=-s20 -k20 --min-total-hit-len=40
+	aln_flags=-k20 --min-total-hit-len=40
 else
 	$(error The dataset name $(dataset) is invalid!)
 endif
