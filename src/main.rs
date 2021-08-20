@@ -24,8 +24,11 @@ fn main() -> Result<()> {
 
     match opts.subcommand {
         SubCommand::Index(index_opts) => {
-            let index =
-                index::Index::create_from_files(&index_opts.reference, &index_opts.annotations, index_opts.sampling_rate)?;
+            let index = index::Index::create_from_files(
+                &index_opts.reference,
+                &index_opts.annotations,
+                index_opts.sampling_rate,
+            )?;
             let index_file: Box<dyn Write> = match &index_opts.index[..] {
                 "-" => Box::new(io::stdout()),
                 _ => Box::new(File::create(&index_opts.index)?),

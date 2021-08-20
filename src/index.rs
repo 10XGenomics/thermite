@@ -6,9 +6,9 @@ use bio::alphabets::dna;
 use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::data_structures::suffix_array::{suffix_array, SuffixArray, SampledSuffixArray};
-use bio_cratesio::io::fasta::IndexedReader;
+use bio::data_structures::suffix_array::{suffix_array, SampledSuffixArray, SuffixArray};
 use bio::utils::Interval;
+use bio_cratesio::io::fasta::IndexedReader;
 
 use bio_types::strand::ReqStrand;
 
@@ -33,7 +33,6 @@ pub struct Index {
     refs: Vec<Ref>,
     seq: Vec<u8>,
     sa: SampledSuffixArray<BWT, Less, Occ>,
-    fmd: FMDIndex<BWT, Less, Occ>,
     txome: Txome,
 }
 
@@ -42,7 +41,11 @@ impl Index {
     ///
     /// The fasta file is expected to be already indexed, so a .fasta.fai file exists
     /// with the same file name.
-    pub fn create_from_files(ref_path: &str, annot_path: &str, sampling_rate: usize) -> Result<Self> {
+    pub fn create_from_files(
+        ref_path: &str,
+        annot_path: &str,
+        sampling_rate: usize,
+    ) -> Result<Self> {
         let mut ref_reader = parse_fastx_file(ref_path)?;
         let mut refs = Vec::with_capacity(8);
         let mut seq = Vec::with_capacity(1024);
@@ -87,10 +90,7 @@ impl Index {
         let alpha = dna::n_alphabet();
         let less = less(&bwt, &alpha);
         let occ = Occ::new(&bwt, sampling_rate as u32, &alpha);
-        // TODO: get rid of clones to save memory
-        let sa = sa.sample(&seq, bwt.clone(), less.clone(), occ.clone(), sampling_rate);
-        let fm = FMIndex::new(bwt, less, occ);
-        let fmd = FMDIndex::from(fm);
+        let sa = sa.sample(&seq, bwt, less, occ, sampling_rate);
 
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
@@ -175,7 +175,6 @@ impl Index {
             refs,
             seq,
             sa,
-            fmd,
             txome,
         })
     }
@@ -189,7 +188,11 @@ impl Index {
         min_seed_len: usize,
     ) -> HashMap<usize, TxHit> {
         let mut tx_hits: HashMap<usize, TxHit> = HashMap::with_capacity(8);
-        let intervals = self.fmd.all_smems(query, min_seed_len);
+        // creating the fmd index on the fly here is fast since the structs are just wrappers
+        let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
+        // safe because we only align nucleotides
+        let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
+        let intervals = fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -219,7 +222,11 @@ impl Index {
     /// The MEMs use concatenated reference coordinates.
     pub fn longest_smem(&self, query: &[u8], min_seed_len: usize) -> Option<Mem> {
         let mut max_smem = None;
-        let intervals = self.fmd.all_smems(query, min_seed_len);
+        // creating the fmd index on the fly here is fast since the structs are just wrappers
+        let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
+        // safe because we only align nucleotides
+        let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
+        let intervals = fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
