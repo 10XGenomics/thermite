@@ -23,8 +23,16 @@ else ifeq ($(dataset),chrM)
 	# Use the human mitochondrial genome data.
 	ref=GRCh38-2020-A-chrM
 	query=pbmc10k_chrM_500k_reads.fastq.gz
-	aln=thermite_pbmc10k_chrM_500k_reads.sam
+	aln=thermite_pbmc10k_chrM_500k_reads
 	compare=cellranger_pbmc10k_chrM_500k_reads.bam
+	index_flags=
+	aln_flags=-s20 -k20 --min-total-hit-len=40
+else ifeq ($(dataset), chr21)
+	# Use chromosome 21 dataset.
+	ref=GRCh38-2020-A-chr21
+	query=pbmc10k_chr21_500k_reads.fastq.gz
+	aln=thermite_pbmc10k_chr21_500k_reads
+	compare=cellranger_pbmc10k_chr21_500k_reads.bam
 	index_flags=
 	aln_flags=-s20 -k20 --min-total-hit-len=40
 else
