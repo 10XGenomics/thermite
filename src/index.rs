@@ -6,8 +6,8 @@ use bio::alphabets::dna;
 use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::data_structures::suffix_array::{suffix_array, RawSuffixArray};
-use bio::io::fasta::IndexedReader;
+use bio::data_structures::suffix_array::{suffix_array, SuffixArray, SampledSuffixArray};
+use bio_cratesio::io::fasta::IndexedReader;
 use bio::utils::Interval;
 
 use bio_types::strand::ReqStrand;
@@ -32,7 +32,7 @@ use crate::txome::*;
 pub struct Index {
     refs: Vec<Ref>,
     seq: Vec<u8>,
-    sa: RawSuffixArray,
+    sa: SampledSuffixArray<BWT, Less, Occ>,
     fmd: FMDIndex<BWT, Less, Occ>,
     txome: Txome,
 }
@@ -42,7 +42,7 @@ impl Index {
     ///
     /// The fasta file is expected to be already indexed, so a .fasta.fai file exists
     /// with the same file name.
-    pub fn create_from_files(ref_path: &str, annot_path: &str) -> Result<Self> {
+    pub fn create_from_files(ref_path: &str, annot_path: &str, sampling_rate: usize) -> Result<Self> {
         let mut ref_reader = parse_fastx_file(ref_path)?;
         let mut refs = Vec::with_capacity(8);
         let mut seq = Vec::with_capacity(1024);
@@ -86,7 +86,9 @@ impl Index {
         let bwt = bwt(&seq, &sa);
         let alpha = dna::n_alphabet();
         let less = less(&bwt, &alpha);
-        let occ = Occ::new(&bwt, 3, &alpha);
+        let occ = Occ::new(&bwt, sampling_rate as u32, &alpha);
+        // TODO: get rid of clones to save memory
+        let sa = sa.sample(&seq, bwt.clone(), less.clone(), occ.clone(), sampling_rate);
         let fm = FMIndex::new(bwt, less, occ);
         let fmd = FMDIndex::from(fm);
 

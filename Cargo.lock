@@ -129,6 +129,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "bio"
+version = "0.37.0"
+source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=sampled-sa#db74992304bb88067a8300270864a529daf424ad"
+dependencies = [
+ "anyhow",
+ "approx",
+ "bio-types",
+ "bit-set",
+ "bv",
+ "bytecount",
+ "csv",
+ "custom_derive",
+ "enum-map",
+ "fnv",
+ "fxhash",
+ "getset",
+ "itertools",
+ "itertools-num",
+ "lazy_static",
+ "multimap",
+ "ndarray",
+ "newtype_derive",
+ "num-integer",
+ "num-traits",
+ "ordered-float",
+ "petgraph",
+ "rand 0.7.3",
+ "regex",
+ "serde",
+ "serde_derive",
+ "statrs",
+ "strum",
+ "strum_macros",
+ "thiserror",
+ "triple_accel",
+ "vec_map",
+]
+
+[[package]]
 name = "bio-types"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1180,7 +1219,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
- "bio",
+ "bio 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bio 0.37.0 (git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=sampled-sa)",
  "bio-types",
  "clap",
  "needletail",
@@ -1215,7 +1255,7 @@ name = "transcriptome"
 version = "0.1.0"
 source = "git+https://github.com/10XDev/cellranger#0a5d2bfdbd51b783f7d0ac251a2328639e580db5"
 dependencies = [
- "bio",
+ "bio 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bio-types",
  "csv",
  "failure",

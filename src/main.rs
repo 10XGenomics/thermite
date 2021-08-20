@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     match opts.subcommand {
         SubCommand::Index(index_opts) => {
             let index =
-                index::Index::create_from_files(&index_opts.reference, &index_opts.annotations)?;
+                index::Index::create_from_files(&index_opts.reference, &index_opts.annotations, index_opts.sampling_rate)?;
             let index_file: Box<dyn Write> = match &index_opts.index[..] {
                 "-" => Box::new(io::stdout()),
                 _ => Box::new(File::create(&index_opts.index)?),
@@ -76,6 +76,9 @@ pub struct Index {
     /// TAI (Thermite Aligner Index) file to write the index
     #[clap(short = 'o', long = "output", default_value = "-")]
     pub index: String,
+    /// Suffix array sampling rate
+    #[clap(long, default_value = "16")]
+    pub sampling_rate: usize,
 }
 
 #[derive(Debug, Clap)]
