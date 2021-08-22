@@ -16,9 +16,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "^1.0.42"
 bincode = "^1.3.3"
-bio = { version = "^0.37.0", git = "https://github.com/Daniel-Liu-c0deb0t/rust-bio", branch = "sampled-sa" }
+bio = { version = "^0.37.0", git = "https://github.com/Daniel-Liu-c0deb0t/rust-bio", branch = "sampled-sa", features = ["runtime-dispatch-simd"] }
 bio-types = "^0.12.0"
-bio_cratesio = { version = "^0.37.0", package = "bio" }
+bio_cratesio = { version = "^0.37.0", package = "bio", features = ["runtime-dispatch-simd"] }
 clap = { version = "^3.0.0-beta.2", features = ["derive"] }
 needletail = "^0.4.1"
 noodles = { version = "^0.1.0", features = ["bam", "core", "gff", "sam"] }
