@@ -44,7 +44,8 @@ impl Index {
     pub fn create_from_files(
         ref_path: &str,
         annot_path: &str,
-        sampling_rate: usize,
+        sa_sampling_rate: usize,
+        occ_sampling_rate: usize,
     ) -> Result<Self> {
         let mut ref_reader = parse_fastx_file(ref_path)?;
         let mut refs = Vec::with_capacity(8);
@@ -89,8 +90,8 @@ impl Index {
         let bwt = bwt(&seq, &sa);
         let alpha = dna::n_alphabet();
         let less = less(&bwt, &alpha);
-        let occ = Occ::new(&bwt, sampling_rate as u32, &alpha);
-        let sa = sa.sample(&seq, bwt, less, occ, sampling_rate);
+        let occ = Occ::new(&bwt, occ_sampling_rate as u32, &alpha);
+        let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
 
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
@@ -260,6 +261,39 @@ impl Index {
     /// Get the transcriptome.
     pub fn txome(&self) -> &Txome {
         &self.txome
+    }
+
+    /// Print out stats about the index.
+    pub fn print_stats(&self) {
+        println!("Number of chromosomes\t{}", self.refs.len());
+        println!("Length of concatenated sequence\t{}", self.seq.len());
+        println!(
+            "Length of suffix array\t{}",
+            self.sa.len() / self.sa.sampling_rate()
+        );
+        println!("Length of BWT\t{}", self.sa.bwt().len());
+        println!("Length of Less\t{}", self.sa.less().len());
+        println!("Number of genes\t{}", self.txome.genes.len());
+        println!("Number of transcripts\t{}", self.txome.txs.len());
+
+        use bincode::serialized_size;
+        println!(
+            "Serialized size of index\t{}",
+            serialized_size(&self).unwrap()
+        );
+        println!("\tChromosomes\t{}", serialized_size(&self.refs).unwrap());
+        println!(
+            "\tSuffix array + FM index\t{}",
+            serialized_size(&self.sa).unwrap()
+        );
+        println!("\t\tBWT\t{}", serialized_size(self.sa.bwt()).unwrap());
+        println!("\t\tLess\t{}", serialized_size(self.sa.less()).unwrap());
+        println!("\t\tOcc\t{}", serialized_size(self.sa.occ()).unwrap());
+        println!("\tTranscriptome\t{}", serialized_size(&self.txome).unwrap());
+        println!(
+            "\t\tExon -> transcript interval tree\t{}",
+            serialized_size(&self.txome.exon_to_tx).unwrap()
+        );
     }
 }
 

@@ -27,8 +27,14 @@ fn main() -> Result<()> {
             let index = index::Index::create_from_files(
                 &index_opts.reference,
                 &index_opts.annotations,
-                index_opts.sampling_rate,
+                index_opts.sa_sampling_rate,
+                index_opts.occ_sampling_rate,
             )?;
+
+            if opts.verbose {
+                index.print_stats();
+            }
+
             let index_file: Box<dyn Write> = match &index_opts.index[..] {
                 "-" => Box::new(io::stdout()),
                 _ => Box::new(File::create(&index_opts.index)?),
@@ -81,7 +87,10 @@ pub struct Index {
     pub index: String,
     /// Suffix array sampling rate
     #[clap(long, default_value = "16")]
-    pub sampling_rate: usize,
+    pub sa_sampling_rate: usize,
+    /// FM index Occ array sampling rate
+    #[clap(long, default_value = "128")]
+    pub occ_sampling_rate: usize,
 }
 
 #[derive(Debug, Clap)]
