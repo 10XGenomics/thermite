@@ -131,7 +131,7 @@ dependencies = [
 [[package]]
 name = "bio"
 version = "0.37.0"
-source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=sampled-sa#f25e632e7dd54fdf5256f44668f0b0c58ff53c25"
+source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=fix-occ#789de1a84c727464345fb7680f8b6fa670759c4c"
 dependencies = [
  "anyhow",
  "approx",
@@ -1220,7 +1220,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bio 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "bio 0.37.0 (git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=sampled-sa)",
+ "bio 0.37.0 (git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=fix-occ)",
  "bio-types",
  "clap",
  "needletail",
