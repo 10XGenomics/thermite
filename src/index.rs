@@ -7,8 +7,8 @@ use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::interval_tree::IntervalTree;
 use bio::data_structures::suffix_array::{suffix_array, SampledSuffixArray, SuffixArray};
+use bio::io::fasta::IndexedReader;
 use bio::utils::Interval;
-use bio_cratesio::io::fasta::IndexedReader;
 
 use bio_types::strand::ReqStrand;
 

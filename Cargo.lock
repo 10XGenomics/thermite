@@ -90,9 +90,9 @@ dependencies = [
 
 [[package]]
 name = "bio"
-version = "0.37.0"
+version = "0.37.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd1fa26bbc8822577da82a89c3c362fce337fdca5c1f41f14b4ca6b72065c37"
+checksum = "2788488d71db156b2ed53d2114a84b333a4ad38e855bff3f151d536b2670d08d"
 dependencies = [
  "anyhow",
  "approx",
@@ -116,46 +116,7 @@ dependencies = [
  "num-traits",
  "ordered-float",
  "petgraph",
- "rand 0.7.3",
- "regex",
- "serde",
- "serde_derive",
- "statrs",
- "strum",
- "strum_macros",
- "thiserror",
- "triple_accel",
- "vec_map",
-]
-
-[[package]]
-name = "bio"
-version = "0.37.0"
-source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=fix-occ#789de1a84c727464345fb7680f8b6fa670759c4c"
-dependencies = [
- "anyhow",
- "approx",
- "bio-types",
- "bit-set",
- "bv",
- "bytecount",
- "csv",
- "custom_derive",
- "enum-map",
- "fnv",
- "fxhash",
- "getset",
- "itertools",
- "itertools-num",
- "lazy_static",
- "multimap",
- "ndarray",
- "newtype_derive",
- "num-integer",
- "num-traits",
- "ordered-float",
- "petgraph",
- "rand 0.7.3",
+ "rand 0.8.4",
  "regex",
  "serde",
  "serde_derive",
@@ -1219,8 +1180,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
- "bio 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "bio 0.37.0 (git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=fix-occ)",
+ "bio",
  "bio-types",
  "clap",
  "needletail",
@@ -1255,7 +1215,7 @@ name = "transcriptome"
 version = "0.1.0"
 source = "git+https://github.com/10XDev/cellranger#0a5d2bfdbd51b783f7d0ac251a2328639e580db5"
 dependencies = [
- "bio 0.37.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bio",
  "bio-types",
  "csv",
  "failure",
