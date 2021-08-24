@@ -138,7 +138,8 @@ pub fn align_read<'a>(
     let mut gx_alns = Vec::with_capacity(8);
     let min_aln_score = (align_opts.min_aln_score_percent * (read.len() as f32)) as i32;
     let mut max_aln_score = min_aln_score;
-    let mut band_width = read.len() - (min_aln_score as usize);
+    // saturating sub just in case floating point error
+    let mut band_width = read.len().saturating_sub(min_aln_score as usize);
     let mut coord_score: HashMap<(String, bool, usize), i32> = HashMap::with_capacity(8);
 
     // longest to shortest total seed hit length
