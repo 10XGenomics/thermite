@@ -128,7 +128,10 @@ pub fn align_read<'a>(
     read: &[u8],
     align_opts: &AlignOpts,
 ) -> Vec<GenomeAlignment> {
-    let tx_hits_map = index.intersect_transcripts(read, align_opts.min_seed_len);
+    // always make sure reads are uppercase
+    let read = read.to_ascii_uppercase();
+
+    let tx_hits_map = index.intersect_transcripts(&read, align_opts.min_seed_len);
     let mut tx_hits = tx_hits_map.values().collect::<Vec<_>>();
     tx_hits.sort_unstable_by_key(|k| k.total_len);
 
@@ -152,10 +155,11 @@ pub fn align_read<'a>(
         let tx_aln = {
             // TODO: reuse aligner, just change bandwidth
             // align locally in the transcriptome and allow suffix of the read to be clipped
+            // note that the tx sequence can be forwards or revcomp
             let scoring = Scoring::from_scores(-1, -1, 1, -1).yclip(0).xclip_suffix(0);
             let mut aligner = Aligner::with_scoring(scoring, align_opts.min_seed_len, band_width);
             let mut aln = aligner.custom_with_prehash(
-                read,
+                &read,
                 &tx.seq,
                 tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap(),
             );
@@ -188,7 +192,10 @@ pub fn align_read<'a>(
         }
 
         // narrow band when better alignments are found
-        band_width = cmp::min(band_width, read.len() - (gx_aln.gx_aln.score as usize));
+        band_width = cmp::min(
+            band_width,
+            read.len() + align_opts.multimap_score_range - (gx_aln.gx_aln.score as usize),
+        );
         max_aln_score = cmp::max(max_aln_score, gx_aln.gx_aln.score);
         gx_alns.push(gx_aln);
     }
@@ -209,8 +216,10 @@ pub fn align_read<'a>(
 /// Lift a transcriptome alignment to a genome alignment within a specific chromosome.
 fn tx_to_gx_aln(index: &Index, tx_aln: Alignment, tx_idx: usize) -> GenomeAlignment {
     // lift to concatenated reference coordinates
+    // tx alignment could be either forwards or reversed
     let lifted_aln = lift_tx_to_gx(&tx_aln, &index.txome().txs[tx_idx]);
     // convert concatenated genome coordinates to coordinates within some chromosome
+    // make sure gx alignment is always relative to forwards strand
     lifted_aln_to_gx_aln(index, lifted_aln, tx_idx, tx_aln)
 }
 
@@ -222,10 +231,10 @@ fn lifted_aln_to_gx_aln(
     tx_idx: usize,
     tx_aln: Alignment,
 ) -> GenomeAlignment {
-    // TODO: could just look up chromosome by using transcript
     let (aln_ref, _ref_idx) = index.idx_to_ref(lifted_aln.ystart);
+    let strand = index.txome().txs[tx_idx].strand;
     // convert alignments from concatenated reference coords to chromosome coords
-    let gx_aln = if aln_ref.strand {
+    let gx_aln = if strand {
         Alignment {
             ystart: lifted_aln.ystart - aln_ref.start_idx,
             yend: lifted_aln.yend - aln_ref.start_idx,
@@ -247,7 +256,7 @@ fn lifted_aln_to_gx_aln(
         tx_aln,
         tx_idx,
         ref_name: aln_ref.name.to_owned(),
-        strand: aln_ref.strand,
+        strand,
         primary: false,
     }
 }

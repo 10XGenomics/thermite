@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use needletail::*;
 
-use bio::alphabets::dna;
+use bio::alphabets::{dna, Alphabet};
 use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::interval_tree::IntervalTree;
@@ -86,9 +86,12 @@ impl Index {
             });
         }
 
+        seq.make_ascii_uppercase();
+
         let sa = suffix_array(&seq);
         let bwt = bwt(&seq, &sa);
-        let alpha = dna::n_alphabet();
+        // use a subset of the required alphabet for FMD index
+        let alpha = Alphabet::new(b"ACGNT");
         let less = less(&bwt, &alpha);
         let occ = Occ::new(&bwt, occ_sampling_rate as u32, &alpha);
         let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
@@ -152,6 +155,7 @@ impl Index {
                     })
                     .collect::<Vec<_>>();
                 if !strand {
+                    // reverse exons because tx sequence will be reversed
                     exons.reverse();
                 }
 
@@ -196,6 +200,7 @@ impl Index {
         let intervals = fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
+            // TODO: revcomp indexes?
             let forwards_idxs = interval.0.forward().occ(&self.sa);
             let mem_len = interval.2;
 
