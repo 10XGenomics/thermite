@@ -6,11 +6,13 @@ use bio::alphabets::{dna, Alphabet};
 use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::data_structures::suffix_array::{suffix_array, SampledSuffixArray, SuffixArray};
+use bio::data_structures::suffix_array::{RawSuffixArray, SampledSuffixArray, SuffixArray};
 use bio::io::fasta::IndexedReader;
 use bio::utils::Interval;
 
 use bio_types::strand::ReqStrand;
+
+use libdivsufsort_rs::divsufsort64;
 
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +90,11 @@ impl Index {
 
         seq.make_ascii_uppercase();
 
-        let sa = suffix_array(&seq);
+        let sa = divsufsort64(&seq)
+            .expect("Suffix array construction failed!")
+            .into_iter()
+            .map(|x| x as usize)
+            .collect::<Vec<_>>() as RawSuffixArray;
         let bwt = bwt(&seq, &sa);
         // use a subset of the required alphabet for FMD index
         let alpha = Alphabet::new(b"ACGNT");

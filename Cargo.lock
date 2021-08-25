@@ -272,6 +272,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb6210b637171dfba4cda12e579ac6dc73f5165ad56133e5d72ef3131f320855"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -559,6 +568,15 @@ name = "libc"
 version = "0.2.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
+
+[[package]]
+name = "libdivsufsort-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d579f2540ea9e8d67be938bcce5cac5d4b1b955676078bb966fdfe7ae2390f9"
+dependencies = [
+ "cmake",
+]
 
 [[package]]
 name = "lzma-sys"
@@ -1183,6 +1201,7 @@ dependencies = [
  "bio",
  "bio-types",
  "clap",
+ "libdivsufsort-rs",
  "needletail",
  "noodles",
  "rayon",
