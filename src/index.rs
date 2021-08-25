@@ -2,15 +2,17 @@ use anyhow::Result;
 
 use needletail::*;
 
-use bio::alphabets::dna;
+use bio::alphabets::{dna, Alphabet};
 use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
 use bio::data_structures::fmindex::{FMDIndex, FMIndex};
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::data_structures::suffix_array::{suffix_array, RawSuffixArray};
+use bio::data_structures::suffix_array::{RawSuffixArray, SampledSuffixArray, SuffixArray};
 use bio::io::fasta::IndexedReader;
 use bio::utils::Interval;
 
 use bio_types::strand::ReqStrand;
+
+use libdivsufsort_rs::divsufsort64;
 
 use serde::{Deserialize, Serialize};
 
@@ -32,8 +34,7 @@ use crate::txome::*;
 pub struct Index {
     refs: Vec<Ref>,
     seq: Vec<u8>,
-    sa: RawSuffixArray,
-    fmd: FMDIndex<BWT, Less, Occ>,
+    sa: SampledSuffixArray<BWT, Less, Occ>,
     txome: Txome,
 }
 
@@ -42,7 +43,12 @@ impl Index {
     ///
     /// The fasta file is expected to be already indexed, so a .fasta.fai file exists
     /// with the same file name.
-    pub fn create_from_files(ref_path: &str, annot_path: &str) -> Result<Self> {
+    pub fn create_from_files(
+        ref_path: &str,
+        annot_path: &str,
+        sa_sampling_rate: usize,
+        occ_sampling_rate: usize,
+    ) -> Result<Self> {
         let mut ref_reader = parse_fastx_file(ref_path)?;
         let mut refs = Vec::with_capacity(8);
         let mut seq = Vec::with_capacity(1024);
@@ -82,13 +88,19 @@ impl Index {
             });
         }
 
-        let sa = suffix_array(&seq);
+        seq.make_ascii_uppercase();
+
+        let sa = divsufsort64(&seq)
+            .expect("Suffix array construction failed!")
+            .into_iter()
+            .map(|x| x as usize)
+            .collect::<Vec<_>>() as RawSuffixArray;
         let bwt = bwt(&seq, &sa);
-        let alpha = dna::n_alphabet();
+        // use a subset of the required alphabet for FMD index
+        let alpha = Alphabet::new(b"ACGNT");
         let less = less(&bwt, &alpha);
-        let occ = Occ::new(&bwt, 3, &alpha);
-        let fm = FMIndex::new(bwt, less, occ);
-        let fmd = FMDIndex::from(fm);
+        let occ = Occ::new(&bwt, occ_sampling_rate as u32, &alpha);
+        let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
 
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
@@ -149,6 +161,7 @@ impl Index {
                     })
                     .collect::<Vec<_>>();
                 if !strand {
+                    // reverse exons because tx sequence will be reversed
                     exons.reverse();
                 }
 
@@ -173,7 +186,6 @@ impl Index {
             refs,
             seq,
             sa,
-            fmd,
             txome,
         })
     }
@@ -187,9 +199,14 @@ impl Index {
         min_seed_len: usize,
     ) -> HashMap<usize, TxHit> {
         let mut tx_hits: HashMap<usize, TxHit> = HashMap::with_capacity(8);
-        let intervals = self.fmd.all_smems(query, min_seed_len);
+        // creating the fmd index on the fly here is fast since the structs are just wrappers
+        let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
+        // safe because we only align nucleotides
+        let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
+        let intervals = fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
+            // TODO: revcomp indexes?
             let forwards_idxs = interval.0.forward().occ(&self.sa);
             let mem_len = interval.2;
 
@@ -217,7 +234,11 @@ impl Index {
     /// The MEMs use concatenated reference coordinates.
     pub fn longest_smem(&self, query: &[u8], min_seed_len: usize) -> Option<Mem> {
         let mut max_smem = None;
-        let intervals = self.fmd.all_smems(query, min_seed_len);
+        // creating the fmd index on the fly here is fast since the structs are just wrappers
+        let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
+        // safe because we only align nucleotides
+        let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
+        let intervals = fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -251,6 +272,39 @@ impl Index {
     /// Get the transcriptome.
     pub fn txome(&self) -> &Txome {
         &self.txome
+    }
+
+    /// Print out stats about the index.
+    pub fn print_stats(&self) {
+        println!("Number of chromosomes\t{}", self.refs.len());
+        println!("Length of concatenated sequence\t{}", self.seq.len());
+        println!(
+            "Length of suffix array\t{}",
+            self.sa.len() / self.sa.sampling_rate()
+        );
+        println!("Length of BWT\t{}", self.sa.bwt().len());
+        println!("Length of Less\t{}", self.sa.less().len());
+        println!("Number of genes\t{}", self.txome.genes.len());
+        println!("Number of transcripts\t{}", self.txome.txs.len());
+
+        use bincode::serialized_size;
+        println!(
+            "Serialized size of index\t{}",
+            serialized_size(&self).unwrap()
+        );
+        println!("\tChromosomes\t{}", serialized_size(&self.refs).unwrap());
+        println!(
+            "\tSuffix array + FM index\t{}",
+            serialized_size(&self.sa).unwrap()
+        );
+        println!("\t\tBWT\t{}", serialized_size(self.sa.bwt()).unwrap());
+        println!("\t\tLess\t{}", serialized_size(self.sa.less()).unwrap());
+        println!("\t\tOcc\t{}", serialized_size(self.sa.occ()).unwrap());
+        println!("\tTranscriptome\t{}", serialized_size(&self.txome).unwrap());
+        println!(
+            "\t\tExon -> transcript interval tree\t{}",
+            serialized_size(&self.txome.exon_to_tx).unwrap()
+        );
     }
 }
 
