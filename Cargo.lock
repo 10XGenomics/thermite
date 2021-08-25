@@ -90,9 +90,9 @@ dependencies = [
 
 [[package]]
 name = "bio"
-version = "0.37.0"
+version = "0.37.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd1fa26bbc8822577da82a89c3c362fce337fdca5c1f41f14b4ca6b72065c37"
+checksum = "2788488d71db156b2ed53d2114a84b333a4ad38e855bff3f151d536b2670d08d"
 dependencies = [
  "anyhow",
  "approx",
@@ -116,7 +116,7 @@ dependencies = [
  "num-traits",
  "ordered-float",
  "petgraph",
- "rand 0.7.3",
+ "rand 0.8.4",
  "regex",
  "serde",
  "serde_derive",
@@ -269,6 +269,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "cmake"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb6210b637171dfba4cda12e579ac6dc73f5165ad56133e5d72ef3131f320855"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -559,6 +568,15 @@ name = "libc"
 version = "0.2.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
+
+[[package]]
+name = "libdivsufsort-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d579f2540ea9e8d67be938bcce5cac5d4b1b955676078bb966fdfe7ae2390f9"
+dependencies = [
+ "cmake",
+]
 
 [[package]]
 name = "lzma-sys"
@@ -1183,6 +1201,7 @@ dependencies = [
  "bio",
  "bio-types",
  "clap",
+ "libdivsufsort-rs",
  "needletail",
  "noodles",
  "rayon",
