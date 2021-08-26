@@ -9,7 +9,7 @@ use bio::alignment::sparse::{hash_kmers, HashMapFx};
 use bio::alignment::{Alignment, AlignmentOperation};
 
 use std::cmp;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
@@ -19,7 +19,7 @@ use crate::index::*;
 use crate::txome::*;
 
 /// Kmers of a transcript sequence.
-type Kmers<'a> = HashMapFx<&'a [u8], Vec<u32>>;
+pub type Kmers<'a> = HashMapFx<&'a [u8], Vec<u32>>;
 
 /// Align reads from a fastq file and output the alignments in paf, sam, or bam format.
 pub fn align_reads_from_file(
@@ -51,7 +51,7 @@ pub fn align_reads_from_file(
         OutputFormat::Paf => OutputWriter::Paf(output_writer),
     };
 
-    let mut tx_kmer_cache = vec![None; index.txome().txs.len()];
+    let mut tx_kmer_cache = HashMapFx::default();
 
     for query_path in query_paths {
         let mut reader = parse_fastx_file(query_path)?;
@@ -124,7 +124,7 @@ pub fn align_reads_from_file(
 /// Attempt to align a single read and return the alignment if it is found.
 pub fn align_read<'a>(
     index: &'a Index,
-    tx_kmer_cache: &mut [Option<Kmers<'a>>],
+    tx_kmer_cache: &mut HashMapFx<usize, Kmers<'a>>,
     read: &[u8],
     align_opts: &AlignOpts,
 ) -> Vec<GenomeAlignment> {
@@ -139,7 +139,7 @@ pub fn align_read<'a>(
     let min_aln_score = (align_opts.min_aln_score_percent * (read.len() as f32)) as i32;
     let mut max_aln_score = min_aln_score;
     let mut band_width = read.len() - (min_aln_score as usize);
-    let mut coord_score: HashMap<(String, bool, usize), i32> = HashMap::with_capacity(8);
+    let mut coord_score: HashMapFx<(String, bool, usize), i32> = HashMapFx::default();
 
     // longest to shortest total seed hit length
     for tx_hit in tx_hits.into_iter().rev() {
@@ -148,9 +148,9 @@ pub fn align_read<'a>(
         }
 
         let tx = &index.txome().txs[tx_hit.tx_idx];
-        if tx_kmer_cache[tx_hit.tx_idx].is_none() {
-            tx_kmer_cache[tx_hit.tx_idx] = Some(hash_kmers(&tx.seq, align_opts.min_seed_len));
-        }
+        let kmer_cache = tx_kmer_cache
+            .entry(tx_hit.tx_idx)
+            .or_insert_with(|| hash_kmers(&tx.seq, align_opts.min_seed_len));
 
         let tx_aln = {
             // TODO: reuse aligner, just change bandwidth
@@ -158,11 +158,7 @@ pub fn align_read<'a>(
             // note that the tx sequence can be forwards or revcomp
             let scoring = Scoring::from_scores(-1, -1, 1, -1).yclip(0).xclip_suffix(0);
             let mut aligner = Aligner::with_scoring(scoring, align_opts.min_seed_len, band_width);
-            let mut aln = aligner.custom_with_prehash(
-                &read,
-                &tx.seq,
-                tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap(),
-            );
+            let mut aln = aligner.custom_with_prehash(&read, &tx.seq, kmer_cache);
             aln.operations.retain(|op| match op {
                 AlignmentOperation::Yclip(_) => false,
                 _ => true,
@@ -262,7 +258,7 @@ fn lifted_aln_to_gx_aln(
 }
 
 /// Struct to conveniently pass around many alignment parameters.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AlignOpts {
     /// Min length of a SMEM seed.
     pub min_seed_len: usize,

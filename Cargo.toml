@@ -22,7 +22,7 @@ clap = { version = "^3.0.0-beta.2", features = ["derive"] }
 libdivsufsort-rs = "^0.1.1"
 needletail = "^0.4.1"
 noodles = { version = "^0.1.0", features = ["bam", "core", "gff", "sam"] }
-rayon = "^1.5.1"
+rust-htslib = "^0.38.2"
 serde = { version = "^1.0", features = ["derive"] }
 transcriptome = { version = "^0.1.0", git = "https://github.com/10XDev/cellranger" }
 
