@@ -172,7 +172,9 @@ pub fn align_read<'a>(
         };
 
         // use the running max alignment score to discard low scoring alignments early
-        if tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32) {
+        if tx_aln.score < min_aln_score
+            || tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
+        {
             continue;
         }
 
@@ -195,7 +197,8 @@ pub fn align_read<'a>(
         // narrow band when better alignments are found
         band_width = cmp::min(
             band_width,
-            read.len() + align_opts.multimap_score_range - (gx_aln.gx_aln.score as usize),
+            (read.len() + align_opts.multimap_score_range)
+                .saturating_sub(gx_aln.gx_aln.score as usize),
         );
         max_aln_score = cmp::max(max_aln_score, gx_aln.gx_aln.score);
         gx_alns.push(gx_aln);
