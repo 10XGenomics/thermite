@@ -16,7 +16,7 @@ use crate::index::*;
 #[derive(Clone)]
 pub struct ThermiteAligner {
     index: Arc<Index>,
-    pub align_opts: AlignOpts,
+    align_opts: AlignOpts,
     header_view: HeaderView,
 }
 
@@ -71,6 +71,21 @@ impl ThermiteAligner {
     /// Estimate the amount of memory the index takes up.
     pub fn est_mem(&self) -> usize {
         serialized_size(self.index.as_ref()).unwrap() as usize
+    }
+
+    /// Get a reference to the alignment options.
+    pub fn opts(&self) -> &AlignOpts {
+        &self.align_opts
+    }
+
+    /// Get a mutable reference to the alignment options.
+    pub fn opts_mut(&mut self) -> &AlignOpts {
+        &mut self.align_opts
+    }
+
+    /// Get a reference to the rust_htslib HeaderView.
+    pub fn header_view(&self) -> &HeaderView {
+        &self.header_view
     }
 }
 
