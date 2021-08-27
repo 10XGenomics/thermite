@@ -4,9 +4,9 @@ use bio::alignment::sparse::HashMapFx;
 
 use noodles::sam;
 
-use bincode::{deserialize_from, serialized_size};
+use bincode::deserialize_from;
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -78,8 +78,8 @@ impl ThermiteAligner {
     }
 
     /// Estimate the amount of memory the index takes up.
-    pub fn est_mem(&self) -> usize {
-        serialized_size(self.index.as_ref()).unwrap() as usize
+    pub fn est_mem(index_path: &Path) -> usize {
+        fs::metadata(index_path).unwrap().len() as usize
     }
 
     /// Get a reference to the alignment options.
