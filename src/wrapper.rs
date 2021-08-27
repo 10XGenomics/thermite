@@ -79,7 +79,9 @@ impl ThermiteAligner {
 
     /// Estimate the amount of memory the index takes up.
     pub fn est_mem(index_path: &Path) -> usize {
-        fs::metadata(index_path).unwrap().len() as usize
+        fs::metadata(index_path)
+            .expect(&format!("Failed to open {}", index_path.display()))
+            .len() as usize
     }
 
     /// Get a reference to the alignment options.
