@@ -88,7 +88,7 @@ impl ThermiteAligner {
     }
 
     /// Get a mutable reference to the alignment options.
-    pub fn opts_mut(&mut self) -> &AlignOpts {
+    pub fn opts_mut(&mut self) -> &mut AlignOpts {
         &mut self.align_opts
     }
 
