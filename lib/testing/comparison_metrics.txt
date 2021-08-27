@@ -1,3 +1,7 @@
-file1 identical alignment to ref fraction: 0.983732
-file2 identical alignment to ref fraction: 0.811592
+file1: cellranger_pbmc10k_chr21_500k_reads.sam, file2: thermite_pbmc10k_chr21_500k_reads.sam
+file1 identical alignment to ref fraction: 0.907342
+file2 identical alignment to ref fraction: 0.283064
+file1 unaligned reads fraction: 0.0
+file2 unaligned reads fraction: 0.63204
+file1 and file2 reads on same chr fraction: 0.36796
 file1 and file2 identical alignments fraction: 0.0
