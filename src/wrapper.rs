@@ -22,6 +22,8 @@ pub struct ThermiteAligner {
     header_view: HeaderView,
 }
 
+unsafe impl Send for ThermiteAligner {}
+
 impl ThermiteAligner {
     /// Create a new thermite aligner instance from an existing Thermite Aligner Index file.
     pub fn new(index_path: &Path) -> Self {
