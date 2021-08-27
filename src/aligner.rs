@@ -167,7 +167,9 @@ pub fn align_read<'a>(
         };
 
         // use the running max alignment score to discard low scoring alignments early
-        if tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32) {
+        if tx_aln.score < align_opts.min_aln_score
+            || tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
+        {
             continue;
         }
 
@@ -264,6 +266,8 @@ pub struct AlignOpts {
     pub min_seed_len: usize,
     /// Min alignment score as a percentage of read length
     pub min_aln_score_percent: f32,
+    /// Min alignment score
+    pub min_aln_score: i32,
     /// Min total length of all seed hits for a read.
     pub min_total_hit_len: usize,
     /// Range of alignment scores below the max score to output.

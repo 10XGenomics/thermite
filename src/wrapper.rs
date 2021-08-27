@@ -27,6 +27,7 @@ impl ThermiteAligner {
         let align_opts = AlignOpts {
             min_seed_len: 20,
             min_aln_score_percent: 0.66,
+            min_aln_score: 30,
             min_total_hit_len: 40,
             multimap_score_range: 1,
         };
