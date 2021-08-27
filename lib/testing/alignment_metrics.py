@@ -37,21 +37,23 @@ def main():
 
     reader1, reader1_type = get_alignment_reader(args.in1)
     reader2, reader2_type = get_alignment_reader(args.in2)
-
     metrics = Metrics()
 
-    for row1, row2 in zip(reader1, reader2):
+    for row1, row2 in zip(
+        reader1,
+        reader2,
+    ):
         metrics.n_reads += 1
-        if reader1_type == "paf":
-            print("Not supporting PAF atm")
-            exit()
-            while row1[0].startswith("@"):
-                row1 = next(reader1)
-        if reader2_type == "paf":
-            print("Not supporting PAF atm")
-            exit()
-            while row2[0].startswith("@"):
-                row2 = next(reader2)
+        # if reader1_type == "paf":
+        #     print("Not supporting PAF atm")
+        #     exit()
+        #     while row1[0].startswith("@"):
+        #         row1 = next(reader1)
+        # if reader2_type == "paf":
+        #     print("Not supporting PAF atm")
+        #     exit()
+        #     while row2[0].startswith("@"):
+        #         row2 = next(reader2)
         while row1.is_secondary:
             row1 = next(reader1)
         while row2.is_secondary:
@@ -70,7 +72,7 @@ def main():
         metrics.n_concordant_align += (
             1 if row1.compare(row2) == 0 else 0
         )  # will this work?
-
+    print(f"file1: {args.in1}, file2: {args.in2}")
     print(
         f"file1 identical alignment to ref fraction: {metrics.n_in1_identical_align/metrics.n_reads}"
     )
