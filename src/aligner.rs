@@ -136,7 +136,10 @@ pub fn align_read<'a>(
     tx_hits.sort_unstable_by_key(|k| k.total_len);
 
     let mut gx_alns = Vec::with_capacity(8);
-    let min_aln_score = (align_opts.min_aln_score_percent * (read.len() as f32)) as i32;
+    let min_aln_score = cmp::max(
+        (align_opts.min_aln_score_percent * (read.len() as f32)) as i32,
+        align_opts.min_aln_score,
+    );
     let mut max_aln_score = min_aln_score;
     let mut band_width = read.len() - (min_aln_score as usize);
     let mut coord_score: HashMapFx<(String, bool, usize), i32> = HashMapFx::default();

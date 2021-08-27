@@ -4,8 +4,10 @@ use bio::alignment::sparse::HashMapFx;
 
 use noodles::sam;
 
-use bincode::serialized_size;
+use bincode::{deserialize_from, serialized_size};
 
+use std::fs::File;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::aligner::*;
@@ -21,9 +23,14 @@ pub struct ThermiteAligner {
 }
 
 impl ThermiteAligner {
-    /// Create a new thermite aligner instance.
-    pub fn new(ref_path: &str, annot_path: &str) -> Self {
-        let index = Arc::new(Index::create_from_files(ref_path, annot_path, 16, 128).unwrap());
+    /// Create a new thermite aligner instance from an existing Thermite Aligner Index file.
+    pub fn new(index_path: &Path) -> Self {
+        let index = Arc::new(
+            deserialize_from(
+                File::open(index_path).expect(&format!("Failed to open {}", index_path.display())),
+            )
+            .unwrap(),
+        );
         let align_opts = AlignOpts {
             min_seed_len: 20,
             min_aln_score_percent: 0.66,

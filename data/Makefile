@@ -18,7 +18,7 @@ ifeq ($(dataset),test)
 	# Set flags for indexing.
 	index_flags=
 	# Set flags for alignment.
-	aln_flags=-k3 --min-total-hit-len=3
+	aln_flags=-k3 --min-total-hit-len=3 --min-aln-score=0
 else ifeq ($(dataset),chrM)
 	# Use the human mitochondrial genome data.
 	ref=GRCh38-2020-A-chrM
