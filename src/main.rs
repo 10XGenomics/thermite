@@ -42,6 +42,11 @@ fn main() -> Result<()> {
             bincode::serialize_into(index_file, &index)?;
         }
         SubCommand::Align(align_opts) => {
+            assert!(
+                align_opts.min_aln_score_percent <= 1.0 && align_opts.min_aln_score_percent >= 0.0,
+                "Min alignment score percent must be between 0.0 and 1.0!"
+            );
+
             let output_fmt = if align_opts.bam {
                 let path = Path::new(&align_opts.output);
                 let ext = path.extension();
