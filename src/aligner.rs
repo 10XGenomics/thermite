@@ -141,7 +141,8 @@ pub fn align_read<'a>(
         align_opts.min_aln_score,
     );
     let mut max_aln_score = min_aln_score;
-    let mut band_width = read.len() - (min_aln_score as usize);
+    // saturating sub just in case floating point error
+    let mut band_width = read.len().saturating_sub(min_aln_score as usize);
     let mut coord_score: HashMapFx<(String, bool, usize), i32> = HashMapFx::default();
 
     // longest to shortest total seed hit length
@@ -171,6 +172,7 @@ pub fn align_read<'a>(
 
         // use the running max alignment score to discard low scoring alignments early
         if tx_aln.score < align_opts.min_aln_score
+            || tx_aln.score < min_aln_score
             || tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
         {
             continue;
@@ -195,7 +197,8 @@ pub fn align_read<'a>(
         // narrow band when better alignments are found
         band_width = cmp::min(
             band_width,
-            read.len() + align_opts.multimap_score_range - (gx_aln.gx_aln.score as usize),
+            (read.len() + align_opts.multimap_score_range)
+                .saturating_sub(gx_aln.gx_aln.score as usize),
         );
         max_aln_score = cmp::max(max_aln_score, gx_aln.gx_aln.score);
         gx_alns.push(gx_aln);
