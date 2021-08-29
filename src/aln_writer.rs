@@ -167,7 +167,7 @@ pub fn aln_to_sam_record(
             Field::new(Tag::Other("RE".to_owned()), Value::Char('E')),
         ])?
     };
-    let read_name = str::from_utf8(query_name)?;
+    let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
         .set_sequence(str::from_utf8(query_seq)?.parse()?)
@@ -191,7 +191,7 @@ pub fn unmapped_sam_record(
     query_seq: &[u8],
     query_qual: &[u8],
 ) -> Result<sam::Record> {
-    let read_name = str::from_utf8(query_name)?;
+    let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
         .set_sequence(str::from_utf8(query_seq)?.parse()?)
@@ -277,5 +277,14 @@ fn multimapq(n: usize) -> u8 {
         0
     } else {
         (-10.0 * (1.0 - 1.0 / (n as f32)).log10()).round() as u8
+    }
+}
+
+/// Format a read name by converting it to a string and splitting at
+/// the first space char.
+fn format_read_name(r: &[u8]) -> &str {
+    match r.iter().position(|&c| c == b' ') {
+        Some(i) => str::from_utf8(&r[..i]).unwrap(),
+        None => str::from_utf8(r).unwrap(),
     }
 }
