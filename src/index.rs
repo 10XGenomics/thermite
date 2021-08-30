@@ -121,16 +121,30 @@ impl Index {
             })
             .collect::<Vec<_>>();
 
+        let mut gene_intervals = vec![(seq.len(), 0); genes.len()];
         let mut exon_to_tx = IntervalTree::new();
         let txs = txome_txs
             .into_iter()
             .map(|tx| {
+                let gene_idx = tx.gene_idx.0 as usize;
                 let mut tx_seq = Vec::with_capacity(tx.len() as usize);
                 tx.get_sequence(&mut ref_fai_reader, &mut tx_seq)
                     .expect(&format!("Error in reading reference file {}", ref_path));
 
                 let strand = tx.strand == ReqStrand::Forward;
                 let tx_ref = &refs[name_to_ref[&NameStrand(tx.chrom.clone(), strand)]];
+
+                let tx_start = if strand {
+                    tx.start() + tx_ref.start_idx
+                } else {
+                    tx_ref.end_idx - 1 - tx.end()
+                };
+                let tx_end = if strand {
+                    tx.end() + tx_ref.start_idx
+                } else {
+                    tx_ref.end_idx - 1 - tx.start()
+                };
+                gene_intervals[gene_idx] = (gene_intervals[gene_idx].0.min(tx_start), gene_intervals[gene_idx].1.max(tx_end));
 
                 let mut exons = tx
                     .exons
@@ -171,15 +185,21 @@ impl Index {
                     strand,
                     exons,
                     seq: tx_seq,
-                    gene_idx: tx.gene_idx.0 as usize,
+                    gene_idx,
                 }
             })
             .collect::<Vec<_>>();
+
+        let mut gene_intervals = IntervalTree::from_iter(gene_intervals
+                                                     .into_iter()
+                                                     .enumerate()
+                                                     .map(|(i, (start, end))| (Interval::new(start..end).unwrap(), i)));
 
         let txome = Txome {
             genes,
             txs,
             exon_to_tx,
+            gene_intervals,
         };
 
         Ok(Index {
@@ -190,15 +210,15 @@ impl Index {
         })
     }
 
-    /// Find all intersecting transcripts to a query sequence.
+    /// Find all SMEMs for a query sequence.
     ///
-    /// The transcripts use concatenated reference coordinates.
-    pub fn intersect_transcripts(
+    /// The MEMs use concatenated reference coordinates.
+    pub fn all_smems(
         &self,
         query: &[u8],
         min_seed_len: usize,
-    ) -> HashMap<usize, TxHit> {
-        let mut tx_hits: HashMap<usize, TxHit> = HashMap::with_capacity(8);
+    ) -> Vec<Mem> {
+        let mut mems = Vec::new();
         // creating the fmd index on the fly here is fast since the structs are just wrappers
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
@@ -206,27 +226,21 @@ impl Index {
         let intervals = fmd.all_smems(query, min_seed_len);
 
         for interval in intervals {
-            // TODO: revcomp indexes?
             let forwards_idxs = interval.0.forward().occ(&self.sa);
+            let query_idx = interval.1;
             let mem_len = interval.2;
 
             for ref_idx in &forwards_idxs {
                 let seed = Interval::new(*ref_idx..*ref_idx + mem_len).unwrap();
-                let tx_idxs = self.txome.exon_to_tx.find(seed);
-
-                for tx_idx in tx_idxs {
-                    let mut tx_hit = tx_hits.entry(*tx_idx.data()).or_insert_with(|| TxHit {
-                        tx_idx: *tx_idx.data(),
-                        hits: 0,
-                        total_len: 0,
-                    });
-                    tx_hit.hits += 1;
-                    tx_hit.total_len += mem_len;
-                }
+                mems.push(Mem {
+                    query_idx,
+                    ref_idx: *ref_idx,
+                    len: mem_len,
+                });
             }
         }
 
-        tx_hits
+        mems
     }
 
     /// Find a single longest supermaximal exact match (SMEM) for a query sequence.
@@ -272,6 +286,11 @@ impl Index {
     /// Get the transcriptome.
     pub fn txome(&self) -> &Txome {
         &self.txome
+    }
+
+    /// Get the concatenated reference sequence.
+    pub fn seq(&self) -> &[u8] {
+        &self.seq
     }
 
     /// Print out stats about the index.

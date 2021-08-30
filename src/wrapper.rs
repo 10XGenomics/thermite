@@ -56,8 +56,7 @@ impl ThermiteAligner {
 
     /// Align a single read and return a rust_htslib Record
     pub fn align_read(&self, name: &[u8], read: &[u8], qual: &[u8]) -> Vec<Record> {
-        let mut tx_kmer_cache = HashMapFx::default();
-        let alns = align_read(&self.index, &mut tx_kmer_cache, read, &self.align_opts);
+        let alns = align_read(&self.index, read, &self.align_opts);
 
         if alns.is_empty() {
             return vec![sam_noodles_to_htslib(

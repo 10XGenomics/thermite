@@ -18,9 +18,6 @@ use crate::aln_writer::*;
 use crate::index::*;
 use crate::txome::*;
 
-/// Kmers of a transcript sequence.
-pub type Kmers<'a> = HashMapFx<&'a [u8], Vec<u32>>;
-
 /// Align reads from a fastq file and output the alignments in paf, sam, or bam format.
 pub fn align_reads_from_file(
     index: &Index,
@@ -51,14 +48,12 @@ pub fn align_reads_from_file(
         OutputFormat::Paf => OutputWriter::Paf(output_writer),
     };
 
-    let mut tx_kmer_cache = HashMapFx::default();
-
     for query_path in query_paths {
         let mut reader = parse_fastx_file(query_path)?;
 
         while let Some(record) = reader.next() {
             let record = record?;
-            let alns = align_read(index, &mut tx_kmer_cache, &record.seq(), align_opts);
+            let alns = align_read(index, &record.seq(), align_opts);
 
             if alns.is_empty() {
                 // unmapped read
@@ -122,18 +117,15 @@ pub fn align_reads_from_file(
 }
 
 /// Attempt to align a single read and return the alignment if it is found.
-pub fn align_read<'a>(
-    index: &'a Index,
-    tx_kmer_cache: &mut HashMapFx<usize, Kmers<'a>>,
+pub fn align_read(
+    index: &Index,
     read: &[u8],
     align_opts: &AlignOpts,
 ) -> Vec<GenomeAlignment> {
     // always make sure reads are uppercase
     let read = read.to_ascii_uppercase();
 
-    let tx_hits_map = index.intersect_transcripts(&read, align_opts.min_seed_len);
-    let mut tx_hits = tx_hits_map.values().collect::<Vec<_>>();
-    tx_hits.sort_unstable_by_key(|k| k.total_len);
+    let mems = index.all_smems(&read, align_opts.min_seed_len);
 
     let mut gx_alns = Vec::with_capacity(8);
     let min_aln_score = cmp::max(
@@ -145,30 +137,12 @@ pub fn align_read<'a>(
     let mut band_width = read.len().saturating_sub(min_aln_score as usize);
     let mut coord_score: HashMapFx<(String, bool, usize), i32> = HashMapFx::default();
 
+    let scoring = Scoring::from_scores(-1, -1, 1, -1).yclip(0).xclip_suffix(0);
+    let mut swg = SwgExtend::new(band_width, scoring);
+
     // longest to shortest total seed hit length
-    for tx_hit in tx_hits.into_iter().rev() {
-        if tx_hit.total_len < align_opts.min_total_hit_len {
-            break;
-        }
-
-        let tx = &index.txome().txs[tx_hit.tx_idx];
-        let kmer_cache = tx_kmer_cache
-            .entry(tx_hit.tx_idx)
-            .or_insert_with(|| hash_kmers(&tx.seq, align_opts.min_seed_len));
-
-        let tx_aln = {
-            // TODO: reuse aligner, just change bandwidth
-            // align locally in the transcriptome and allow suffix of the read to be clipped
-            // note that the tx sequence can be forwards or revcomp
-            let scoring = Scoring::from_scores(-1, -1, 1, -1).yclip(0).xclip_suffix(0);
-            let mut aligner = Aligner::with_scoring(scoring, align_opts.min_seed_len, band_width);
-            let mut aln = aligner.custom_with_prehash(&read, &tx.seq, kmer_cache);
-            aln.operations.retain(|op| match op {
-                AlignmentOperation::Yclip(_) => false,
-                _ => true,
-            });
-            aln
-        };
+    for hit in &mems {
+        let gx_aln = align_seed_hit(index, read, &mut swg, hit,);
 
         // use the running max alignment score to discard low scoring alignments early
         if tx_aln.score < align_opts.min_aln_score
@@ -178,9 +152,9 @@ pub fn align_read<'a>(
             continue;
         }
 
-        let gx_aln = tx_to_gx_aln(index, tx_aln, tx_hit.tx_idx);
-
         // ensure that only the max scoring alignment is kept when there are duplicates
+        // TODO: remove overlapping alignments if they are the same type (exonic, intronic,
+        // intergenic)
         match coord_score.entry((gx_aln.ref_name.clone(), gx_aln.strand, gx_aln.gx_aln.ystart)) {
             Entry::Occupied(mut o) => {
                 if gx_aln.gx_aln.score > *o.get() {
@@ -262,6 +236,96 @@ fn lifted_aln_to_gx_aln(
         ref_name: aln_ref.name.to_owned(),
         strand,
         primary: false,
+    }
+}
+
+pub fn align_seed_hit(index: &Index, read: &[u8], swg: &mut SwgExtend, hit: &Mem, min_score: i32, band_width: usize, x_drop: i32) -> GenomeAlignment {
+    // FMD index cannot find a shorter MEM, so this has to be the match
+    if mem.len == read.len() {
+        // TODO: short circuit
+        return;
+    }
+
+    // extend seed hit in genome
+    let aln_ref = index.get_ref(hit.ref_idx).1;
+    let ref_seq = &index.seq()[aln_ref.start_idx..aln_ref.end_idx];
+    let relative_hit = {
+        let mut h = hit.clone();
+        h.ref_idx -= aln_ref.start_idx;
+    };
+    let gx_aln = {
+        let mut a = extend_left_right(swg, relative_hit, read, ref_seq, band_width, x_drop);
+        a.ystart += aln_ref.start_idx;
+        a.yend += aln_ref.start_idx;
+        a
+    };
+
+    // intersect with exons/transcripts
+    let mut best_tx_aln = None;
+    let tx_idxs_iter = index
+        .txome()
+        .exon_to_tx
+        .find(Interval::new(hit.ref_idx..hit.ref_idx + hit.len).unwrap())
+        .map(|e| *e.data())
+        .for_each(|tx_idx| {
+            let tx_seed = lift_mem_to_tx(&index.txome().txs[tx_idx], hit);
+            let tx_aln = extend_left_right(swg, tx_seed, read, &index.txome().txs[tx_idx].seq, band_width, x_drop);
+            if best_tx_aln.is_none() || tx_aln.score > best_tx_aln.unwrap().1.score {
+                best_tx_aln = Some((tx_idx, tx_aln));
+            }
+        };
+
+    if best_tx_aln.is_some() && best_tx_aln.unwrap().1.score >= gx_aln.score {
+        // spliced alignment to txome is better
+        let (tx_idx, tx_aln) = best_tx_aln.unwrap();
+        // lift to specific chromosome alignment
+        let gx_aln = tx_to_gx_aln(index, tx_aln, tx_idx);
+    } else {
+        // unspliced alignment is better
+        let gene_idxs = index
+            .txome()
+            .gene_intervals
+            .find(Interval::new(gx_aln.ystart..gx_aln.yend).unwrap()).map(|e| *e.data()).collect::<Vec<_>>();
+        let gx_aln = concat_to_chr_aln(index, gx_aln);
+
+        if gene_idxs.is_empty() {
+            // intergenic
+
+        } else {
+            // intronic
+
+        }
+    }
+}
+
+pub fn extend_left_right(swg: &mut SwgExtend, hit: Mem, read: &[u8], ref_seq: &[u8], band_width: usize, x_drop: i32) -> Alignment {
+    let x = &read[hit.query_idx + hit.len..];
+    let y = &ref_seq[..hit.ref_idx + hit.len..];
+    let right_aln = swg.extend(x, y, band_width, x_drop);
+
+    let x = &read[..hit.query_idx].to_owned().reverse();
+    let y = &ref_seq[hit.ref_idx.saturating_sub(read.len() + band_width)..hit.ref_idx].to_owned().reverse();
+    let left_aln = swg.extend(&x, &y, band_width, x_drop);
+
+    let y_idx = (hit.ref_idx - left_aln.yend, hit.ref_idx + hit.len + right_aln.yend);
+    let x_idx = (hit.query_idx - left_aln.xend, hit.query_idx + hit.len + right_aln.xend);
+    let match_score = 1;
+    let score = left_aln.score + (match_score * mem.len) + right_aln.score;
+    let ops = left_aln.operations.into_iter().rev()
+        .chain((0..hit.len).iter().map(|_| AlignmentOperation::Match))
+        .chain(right_aln.into_iter())
+        .collect::<Vec<_>>();
+
+    Alignment {
+        score,
+        ystart: y_idx.0,
+        xstart: x_idx.0,
+        yend: y_idx.1,
+        xend: x_idx.1,
+        ylen: ref_seq.len(),
+        xlen: read.len(),
+        operations: ops,
+        mode: AlignmentMode::Custom,
     }
 }
 

@@ -9,6 +9,7 @@ pub struct Txome {
     pub genes: Vec<Gene>,
     pub txs: Vec<Tx>,
     pub exon_to_tx: IntervalTree<usize, usize>,
+    pub gene_intervals: IntervalTree<usize, usize>,
 }
 
 /// A single transcript and its associated information.
@@ -42,14 +43,6 @@ impl Exon {
     pub fn len(&self) -> usize {
         self.end - self.start
     }
-}
-
-/// A transcript hit that is used when intersecting query reads with exons and their transcripts.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TxHit {
-    pub tx_idx: usize,
-    pub hits: usize,
-    pub total_len: usize,
 }
 
 /// Represents an alignment within the genome.
