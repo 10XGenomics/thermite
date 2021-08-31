@@ -26,6 +26,7 @@ impl<F> SwgExtend<F> {
     pub fn extend(&mut self, x: &[u8], y: &[u8], band_width: usize, x_drop: i32) -> Alignment {
         assert!(band_width <= self.max_band_width);
 
+        /// TODO: zero length should result in zero work
         let mut x_idx_offset = 0;
         let w = band_width * 2 + 1;
 

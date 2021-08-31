@@ -187,16 +187,9 @@ pub fn align_read(
 
 /// Align a single seed hit and return a GenomeAlignment.
 pub fn align_seed_hit(index: &Index, read: &[u8], hit: &Mem, swg: &mut SwgExtend, band_width: usize, x_drop: i32) -> GenomeAlignment {
-    // FMD index cannot find a shorter MEM, so this has to be the match
-    if mem.len == read.len() {
-        // TODO: short circuit
-        // check if mem is fully contained in some exon
-        // check if mem intersects gene
-        return;
-    }
+    let aln_ref = index.get_ref(hit.ref_idx).1;
 
     // extend seed hit in genome
-    let aln_ref = index.get_ref(hit.ref_idx).1;
     let ref_seq = &index.seq()[aln_ref.start_idx..aln_ref.end_idx];
     let relative_hit = {
         let mut h = hit.clone();
