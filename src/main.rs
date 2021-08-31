@@ -71,7 +71,6 @@ fn main() -> Result<()> {
                     min_seed_len: align_opts.min_seed_len,
                     min_aln_score_percent: align_opts.min_aln_score_percent,
                     min_aln_score: align_opts.min_aln_score,
-                    min_total_hit_len: align_opts.min_total_hit_len,
                     multimap_score_range: align_opts.multimap_score_range,
                 },
             )?;
@@ -118,9 +117,6 @@ pub struct Align {
     /// Minimum alignment score
     #[clap(long, default_value = "30")]
     pub min_aln_score: i32,
-    /// Minimum total seed hit length (sum of the lengths of all seed hits)
-    #[clap(long, default_value = "40")]
-    pub min_total_hit_len: usize,
     /// Multimap score range
     #[clap(long, default_value = "1")]
     pub multimap_score_range: usize,

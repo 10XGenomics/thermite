@@ -240,6 +240,10 @@ impl Index {
             }
         }
 
+        // sorting makes later operations faster
+        mems.sort_by_key(|mem| mem.len);
+        // longest MEMs first
+        mems.reverse();
         mems
     }
 

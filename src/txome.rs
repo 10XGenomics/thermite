@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use bio::alignment::{Alignment, AlignmentOperation};
 use bio::data_structures::interval_tree::IntervalTree;
 
+use crate::index::Mem;
+
 /// A transcriptome that holds all the genes and transcripts.
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
@@ -52,11 +54,48 @@ impl Exon {
 #[derive(Debug, Clone)]
 pub struct GenomeAlignment {
     pub gx_aln: Alignment,
-    pub tx_aln: Alignment,
-    pub tx_idx: usize,
+    pub aln_type: AlnType,
     pub ref_name: String,
     pub strand: bool,
     pub primary: bool,
+}
+// TODO: antisense
+
+pub enum AlnType {
+    Exonic { tx_aln: Alignment, tx_idx: usize },
+    Intronic { gene_idx: usize },
+    Intergenic,
+}
+
+/// Check if larger interval fully contains the smaller one.
+pub fn contains(larger: &(usize, usize), smaller: &(usize, usize)) -> bool {
+    (b.0 >= a.0 && b.0 < a.1) && (b.1 >= a.0 || b.1 < a.1)
+}
+
+/// Check if two intervals intersect.
+pub fn intersect(a: &(usize, usize), b: &(usize, usize)) -> bool {
+    (a.0 >= b.0 && a.0 < b.1) || (b.0 >= a.0 || b.0 < a.1)
+}
+
+/// Lift a MEM from concatenated genome coordinates to a specific exon in a transcript.
+pub fn lift_mem_to_tx(mem: &Mem, tx: &Tx) -> Mem {
+    let mut exon_sum = 0;
+
+    for exon in tx.exons {
+        if intersect(&(mem.ref_idx, mem.ref_idx + mem.len), &(exon.start, exon.end)) {
+            let start = mem.ref_idx.saturating_sub(exon.start) + exon_sum;
+            let start_offset = exon.start.saturating_sub(mem.ref_idx);
+            let end = (mem.ref_idx + mem.len).min(exon.end) - exon.start + exon_sum;
+            return Mem {
+                ref_idx: start,
+                query_idx: mem.query_idx + start_offset,
+                len: end - start,
+            };
+        }
+        exon_sum += exon.len();
+    }
+
+    unreachable!()
 }
 
 /// Lift a transcriptome alignment to a concatenated reference alignment.
