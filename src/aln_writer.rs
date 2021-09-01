@@ -9,7 +9,7 @@ use std::io::Write;
 use std::{fmt, str};
 
 use crate::index::Index;
-use crate::txome::GenomeAlignment;
+use crate::txome::{AlnType, GenomeAlignment};
 
 /// Supported alignment output formats.
 #[derive(Copy, Clone, PartialEq)]
@@ -140,14 +140,15 @@ pub fn aln_to_sam_record(
         }
         f
     };
+
     let mapq = multimapq(multimap);
     let data = {
-        let mut d = Data::try_from(vec![
+        let mut d = vec![
             Field::new(Tag::AlignmentScore, Value::Int(aln.gx_aln.score as i64)),
             Field::new(Tag::AlignmentHitCount, Value::Int(multimap as i64)),
-        ])?;
+        ];
         match aln.aln_type {
-            AlignmentType::Exonic { tx_idx, tx_aln } => {
+            AlnType::Exonic { tx_idx, ref tx_aln } => {
                 let tx = &index.txome().txs[tx_idx];
                 let gene = &index.txome().genes[tx.gene_idx];
                 let tx_val = format!(
@@ -159,22 +160,37 @@ pub fn aln_to_sam_record(
                     tx_aln.cigar(false)
                 );
 
-                d.insert(Tag::Other("TX".to_owned()), Value::String(tx_val));
-                d.insert(Tag::Other("GX".to_owned()), Value::String(gene.id.to_owned()));
-                d.insert(Tag::Other("GN".to_owned()), Value::String(gene.name.to_owned()));
-                d.insert(Tag::Other("RE".to_owned()), Value::Char('E'));
-            },
-            AlignmentType::Intronic { gene_idx } => {
+                d.push(Field::new(
+                    Tag::Other("TX".to_owned()),
+                    Value::String(tx_val),
+                ));
+                d.push(Field::new(
+                    Tag::Other("GX".to_owned()),
+                    Value::String(gene.id.to_owned()),
+                ));
+                d.push(Field::new(
+                    Tag::Other("GN".to_owned()),
+                    Value::String(gene.name.to_owned()),
+                ));
+                d.push(Field::new(Tag::Other("RE".to_owned()), Value::Char('E')));
+            }
+            AlnType::Intronic { gene_idx } => {
                 let gene = &index.txome().genes[gene_idx];
-                d.insert(Tag::Other("GX".to_owned()), Value::String(gene.id.to_owned()));
-                d.insert(Tag::Other("GN".to_owned()), Value::String(gene.name.to_owned()));
-                d.insert(Tag::Other("RE".to_owned()), Value::Char('N'));
-            },
-            AlignmentType::Intergenic => {
-                d.insert(Tag::Other("RE".to_owned()), Value::Char('I'));
-            },
+                d.push(Field::new(
+                    Tag::Other("GX".to_owned()),
+                    Value::String(gene.id.to_owned()),
+                ));
+                d.push(Field::new(
+                    Tag::Other("GN".to_owned()),
+                    Value::String(gene.name.to_owned()),
+                ));
+                d.push(Field::new(Tag::Other("RE".to_owned()), Value::Char('N')));
+            }
+            AlnType::Intergenic => {
+                d.push(Field::new(Tag::Other("RE".to_owned()), Value::Char('I')));
+            }
         }
-        d
+        Data::try_from(d)?
     };
 
     let read_name = format_read_name(query_name);

@@ -4,18 +4,18 @@ use needletail::*;
 
 use noodles::{bam, sam};
 
-use bio::alignment::pairwise::Scoring;
-use bio::alignment::sparse::HashMapFx;
-use bio::alignment::{Alignment, AlignmentOperation};
+use bio::alignment::pairwise::{MatchFunc, Scoring};
+use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
+use bio::utils::Interval;
 
 use std::cmp;
-use std::collections::hash_map::Entry;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
 
 use crate::aln_writer::*;
 use crate::index::*;
+use crate::swg::*;
 use crate::txome::*;
 
 /// Align reads from fastq files and output the alignments in paf, sam, or bam format.
@@ -117,11 +117,7 @@ pub fn align_reads_from_file(
 }
 
 /// Attempt to align a single read and return the alignments that are found.
-pub fn align_read(
-    index: &Index,
-    read: &[u8],
-    align_opts: &AlignOpts,
-) -> Vec<GenomeAlignment> {
+pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<GenomeAlignment> {
     // always make sure reads are uppercase
     let read = read.to_ascii_uppercase();
 
@@ -142,12 +138,12 @@ pub fn align_read(
     let mut swg = SwgExtend::new(band_width, scoring);
 
     for hit in &mems {
-        let gx_aln = align_seed_hit(index, read, hit, &mut swg, band_width, x_drop);
+        let gx_aln = align_seed_hit(index, &read, hit, &mut swg, band_width, x_drop as i32);
 
         // use the running max alignment score to discard low scoring alignments early
-        if tx_aln.score < align_opts.min_aln_score
-            || tx_aln.score < min_aln_score
-            || tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
+        if gx_aln.gx_aln.score < align_opts.min_aln_score
+            || gx_aln.gx_aln.score < min_aln_score
+            || gx_aln.gx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
         {
             continue;
         }
@@ -172,7 +168,7 @@ pub fn align_read(
         gx_aln.gx_aln.score >= max_aln_score - (align_opts.multimap_score_range as i32)
     });
 
-    let gx_alns = filter_overlapping(gx_alns);
+    let mut gx_alns = filter_overlapping(gx_alns);
 
     // pick an arbitrary max scoring alignment as the primary alignment
     if let Some(gx_aln) = gx_alns
@@ -186,14 +182,22 @@ pub fn align_read(
 }
 
 /// Align a single seed hit and return a GenomeAlignment.
-pub fn align_seed_hit(index: &Index, read: &[u8], hit: &Mem, swg: &mut SwgExtend, band_width: usize, x_drop: i32) -> GenomeAlignment {
-    let aln_ref = index.get_ref(hit.ref_idx).1;
+pub fn align_seed_hit<F: MatchFunc>(
+    index: &Index,
+    read: &[u8],
+    hit: &Mem,
+    swg: &mut SwgExtend<F>,
+    band_width: usize,
+    x_drop: i32,
+) -> GenomeAlignment {
+    let aln_ref = index.idx_to_ref(hit.ref_idx).0;
 
     // extend seed hit in genome
     let ref_seq = &index.seq()[aln_ref.start_idx..aln_ref.end_idx];
     let relative_hit = {
         let mut h = hit.clone();
         h.ref_idx -= aln_ref.start_idx;
+        h
     };
     let gx_aln = {
         let mut a = extend_left_right(ref_seq, &relative_hit, read, swg, band_width, x_drop);
@@ -204,29 +208,38 @@ pub fn align_seed_hit(index: &Index, read: &[u8], hit: &Mem, swg: &mut SwgExtend
 
     // intersect seed hit with exons/transcripts
     // find the one best alignment because they are all from the same gene
-    let mut best_tx_aln = None;
+    let mut best_tx_aln: Option<(usize, Alignment)> = None;
     let tx_idxs_iter = index
         .txome()
         .exon_to_tx
         .find(Interval::new(hit.ref_idx..hit.ref_idx + hit.len).unwrap())
         .map(|e| *e.data());
-    for &tx_idx in tx_idxs_iter {
+    for tx_idx in tx_idxs_iter {
         let tx_seed = lift_mem_to_tx(&hit, &index.txome().txs[tx_idx]);
-        let tx_aln = extend_left_right(&index.txome().txs[tx_idx].seq, &tx_seed, read, swg, band_width, x_drop);
-        if best_tx_aln.is_none() || tx_aln.score > best_tx_aln.unwrap().1.score {
+        let tx_aln = extend_left_right(
+            &index.txome().txs[tx_idx].seq,
+            &tx_seed,
+            read,
+            swg,
+            band_width,
+            x_drop,
+        );
+        let tx_aln_score = tx_aln.score;
+        if best_tx_aln.is_none() || tx_aln_score > best_tx_aln.as_ref().unwrap().1.score {
             best_tx_aln = Some((tx_idx, tx_aln));
         }
 
         // cannot do better than exact match
         let match_score = 1;
-        if tx_aln.score >= read.len() * match_score {
+        if tx_aln_score >= (read.len() * match_score) as i32 {
             break;
         }
     }
 
-    let ref_name = index.txome().txs[tx_idx].chrom.clone();
+    let ref_name = aln_ref.name.clone();
+    let strand = aln_ref.strand;
 
-    if best_tx_aln.is_some() && best_tx_aln.unwrap().1.score >= gx_aln.score {
+    if best_tx_aln.is_some() && best_tx_aln.as_ref().unwrap().1.score >= gx_aln.score {
         // spliced alignment to txome is better
         let (tx_idx, tx_aln) = best_tx_aln.unwrap();
 
@@ -249,7 +262,9 @@ pub fn align_seed_hit(index: &Index, read: &[u8], hit: &Mem, swg: &mut SwgExtend
         let gene_idxs = index
             .txome()
             .gene_intervals
-            .find(Interval::new(gx_aln.ystart..gx_aln.yend).unwrap()).map(|e| *e.data()).collect::<Vec<_>>();
+            .find(Interval::new(gx_aln.ystart..gx_aln.yend).unwrap())
+            .map(|e| *e.data())
+            .collect::<Vec<_>>();
         let gx_aln = concat_to_chr_aln(index, gx_aln);
 
         if gene_idxs.is_empty() {
@@ -266,7 +281,9 @@ pub fn align_seed_hit(index: &Index, read: &[u8], hit: &Mem, swg: &mut SwgExtend
             // only choose one gene idx for simplicity
             GenomeAlignment {
                 gx_aln,
-                aln_type: AlnType::Intronic { gene_idx: gene_idxs[0] },
+                aln_type: AlnType::Intronic {
+                    gene_idx: gene_idxs[0],
+                },
                 ref_name,
                 strand,
                 primary: false,
@@ -281,19 +298,27 @@ pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment
         return alns;
     }
 
-    alns.sort_by_key(|a| (&a.ref_name, a.strand, a.gx_aln.ystart));
+    alns.sort_by(|a, b| {
+        a.ref_name
+            .cmp(&b.ref_name)
+            .then(a.strand.cmp(&b.strand))
+            .then(a.gx_aln.ystart.cmp(&b.gx_aln.ystart))
+    });
 
     let mut max_end = 0;
-    let mut res = Vec::new();
+    let mut res: Vec<GenomeAlignment> = Vec::new();
 
-    for (i, aln) in alns.into_iter().enumerate() {
-        if aln.gx_aln.ystart >= max_end || &aln.ref_name != res.last().unwrap().ref_name || aln.strand != res.last().unwrap().strand {
+    for aln in alns.into_iter() {
+        if aln.gx_aln.ystart >= max_end
+            || aln.ref_name != res.last().unwrap().ref_name
+            || aln.strand != res.last().unwrap().strand
+        {
             max_end = aln.gx_aln.yend;
             res.push(aln);
         } else {
-            let curr = res.last().unwrap();
+            let curr = res.last_mut().unwrap();
             if aln.gx_aln.score > curr.gx_aln.score {
-                *res.last_mut().unwrap() = aln;
+                *curr = aln;
             }
             max_end = max_end.max(curr.gx_aln.yend);
         }
@@ -303,23 +328,48 @@ pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment
 }
 
 /// Extend a seed hit left and right using banded SWG alignment.
-pub fn extend_left_right(ref_seq: &[u8], hit: Mem, read: &[u8], swg: &mut SwgExtend, band_width: usize, x_drop: i32) -> Alignment {
+pub fn extend_left_right<F: MatchFunc>(
+    ref_seq: &[u8],
+    hit: &Mem,
+    read: &[u8],
+    swg: &mut SwgExtend<F>,
+    band_width: usize,
+    x_drop: i32,
+) -> Alignment {
     let x = &read[hit.query_idx + hit.len..];
-    let y = &ref_seq[..hit.ref_idx + hit.len..];
+    let y = &ref_seq[hit.ref_idx + hit.len..];
     let right_aln = swg.extend(x, y, band_width, x_drop);
 
-    let x = &read[..hit.query_idx].to_owned().reverse();
-    let y = &ref_seq[hit.ref_idx.saturating_sub(read.len() + band_width)..hit.ref_idx].to_owned().reverse();
+    let x = {
+        let mut x = read[..hit.query_idx].to_owned();
+        x.reverse();
+        x
+    };
+    let y = {
+        let mut y =
+            ref_seq[hit.ref_idx.saturating_sub(read.len() + band_width)..hit.ref_idx].to_owned();
+        y.reverse();
+        y
+    };
     let left_aln = swg.extend(&x, &y, band_width, x_drop);
 
-    let y_idx = (hit.ref_idx - left_aln.yend, hit.ref_idx + hit.len + right_aln.yend);
-    let x_idx = (hit.query_idx - left_aln.xend, hit.query_idx + hit.len + right_aln.xend);
+    let y_idx = (
+        hit.ref_idx - left_aln.yend,
+        hit.ref_idx + hit.len + right_aln.yend,
+    );
+    let x_idx = (
+        hit.query_idx - left_aln.xend,
+        hit.query_idx + hit.len + right_aln.xend,
+    );
     // assuming unit scores
     let match_score = 1;
-    let score = left_aln.score + (match_score * mem.len) + right_aln.score;
-    let ops = left_aln.operations.into_iter().rev()
-        .chain((0..hit.len).iter().map(|_| AlignmentOperation::Match))
-        .chain(right_aln.into_iter())
+    let score = left_aln.score + (match_score * (hit.len as i32)) + right_aln.score;
+    let ops = left_aln
+        .operations
+        .into_iter()
+        .rev()
+        .chain((0..hit.len).map(|_| AlignmentOperation::Match))
+        .chain(right_aln.operations.into_iter())
         .collect::<Vec<_>>();
 
     Alignment {
@@ -336,10 +386,7 @@ pub fn extend_left_right(ref_seq: &[u8], hit: Mem, read: &[u8], swg: &mut SwgExt
 }
 
 /// Convert an alignment on the concatenated reference to be within a specific chromosome.
-fn concat_to_chr_aln(
-    index: &Index,
-    aln: Alignment,
-) -> Alignment {
+fn concat_to_chr_aln(index: &Index, aln: Alignment) -> Alignment {
     let (aln_ref, _ref_idx) = index.idx_to_ref(aln.ystart);
     // convert alignments from concatenated reference coords to chromosome coords
     if aln_ref.strand {

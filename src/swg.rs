@@ -1,8 +1,9 @@
-use bio::alignment::{Alignment, AlignmentOperation, AlignmentMode};
-use bio::alignment::pairwise::{Scoring, MIN_SCORE};
+use bio::alignment::pairwise::{MatchFunc, Scoring, MIN_SCORE};
+use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
 
 /// Smith-Waterman-Gotoh banded extension alignment.
-pub struct SwgExtend<F> {
+#[allow(non_snake_case)]
+pub struct SwgExtend<F: MatchFunc> {
     D: Vec<i32>,
     C: Vec<i32>,
     R: Vec<i32>,
@@ -11,7 +12,7 @@ pub struct SwgExtend<F> {
     max_band_width: usize,
 }
 
-impl<F> SwgExtend<F> {
+impl<F: MatchFunc> SwgExtend<F> {
     /// Allocate space for alignments up to a certain band size.
     pub fn new(max_band_width: usize, scoring: Scoring<F>) -> Self {
         Self {
@@ -26,6 +27,7 @@ impl<F> SwgExtend<F> {
 
     /// Align with a certain band width and X-drop threshold, ending the alignment
     /// at the highest scoring index.
+    #[allow(non_snake_case)]
     pub fn extend(&mut self, x: &[u8], y: &[u8], band_width: usize, x_drop: i32) -> Alignment {
         assert!(band_width <= self.max_band_width);
 
@@ -51,17 +53,17 @@ impl<F> SwgExtend<F> {
         self.D[0] = 0;
         self.C[0] = 0;
         self.R[0] = 0;
-        self.set_trace(0, 0, AlignmentOperation::Insert);
+        self.set_trace(0, 0, AlignmentOperation::Ins);
         for i in 1..w {
             self.C[i] = MIN_SCORE;
-            self.R[i] = i * self.scoring.gap_extend + self.scoring.gap_open;
+            self.R[i] = (i as i32) * self.scoring.gap_extend + self.scoring.gap_open;
             self.D[i] = self.R[i];
-            self.set_trace(0, i, AlignmentOperation::Insert);
+            self.set_trace(0, i, AlignmentOperation::Ins);
         }
 
         // handle first couple of columns where the band always starts at the
         // first row of the full DP matrix
-        for j in 1..=band_width {
+        for j in 1..=band_width.min(y.len()) {
             let mut band_max = MIN_SCORE;
             let mut prev_D = MIN_SCORE;
 
@@ -72,16 +74,18 @@ impl<F> SwgExtend<F> {
                 self.R[i] = if i == 0 {
                     MIN_SCORE
                 } else {
-                    (self.R[i - 1] + self.scoring.gap_extend).max(self.D[i - 1] + self.scoring.gap_extend + self.scoring.gap_open)
+                    (self.R[i - 1] + self.scoring.gap_extend)
+                        .max(self.D[i - 1] + self.scoring.gap_extend + self.scoring.gap_open)
                 };
                 let d = if i == 0 {
                     MIN_SCORE
                 } else {
-                    prev_D + self.scoring.match_fn(x[i - 1], y[j - 1])
+                    prev_D + self.scoring.match_fn.score(x[i - 1], y[j - 1])
                 };
                 prev_D = self.D[i];
 
-                let (curr_D, dir) = self.triple_max(d, self.C[i], self.R[i], x[i - 1] == y[j - 1]);
+                let (curr_D, dir) =
+                    self.triple_max(d, self.C[i], self.R[i], i > 0 && x[i - 1] == y[j - 1]);
                 self.D[i] = curr_D;
                 self.set_trace(j, i, dir);
 
@@ -119,9 +123,10 @@ impl<F> SwgExtend<F> {
                     (self.R[band_idx - 1] + self.scoring.gap_extend)
                         .max(self.D[band_idx - 1] + self.scoring.gap_extend + self.scoring.gap_open)
                 };
-                let d = self.D[band_idx] + self.scoring.match_fn(x[band_idx - 1], y[j - 1]);
+                let d = self.D[band_idx] + self.scoring.match_fn.score(x[i - 1], y[j - 1]);
 
-                let (curr_D, dir) = self.triple_max(d, self.C[band_idx], self.R[band_idx], x[band_idx - 1] == y[j - 1]);
+                let (curr_D, dir) =
+                    self.triple_max(d, self.C[band_idx], self.R[band_idx], x[i - 1] == y[j - 1]);
                 self.D[band_idx] = curr_D;
                 self.set_trace(j, band_idx, dir);
 
@@ -147,45 +152,56 @@ impl<F> SwgExtend<F> {
             xend: max_idx.0,
             ylen: y.len(),
             xlen: x.len(),
-            operations: self.trace(max_idx.0, max_idx.1, band_width),
+            operations: self.trace(max_idx.0, max_idx.1, x.len(), band_width),
             mode: AlignmentMode::Custom,
         }
     }
 
     /// Compute the traceback path ending at a certain position.
-    fn trace(&self, mut i: usize, mut j: usize, band_width: usize) -> Vec<AlignmentOperation> {
+    fn trace(
+        &self,
+        mut i: usize,
+        mut j: usize,
+        len: usize,
+        band_width: usize,
+    ) -> Vec<AlignmentOperation> {
         let mut traceback = Vec::with_capacity(i + j + 4);
+        if i < len {
+            traceback.push(AlignmentOperation::Xclip(len - i));
+        }
 
         while i > 0 || j > 0 {
             let band_idx = i - j.saturating_sub(band_width);
             traceback.push(self.trace[j][band_idx]);
 
             match self.trace[j][band_idx] {
-                AlignmentOperation::Match {
+                AlignmentOperation::Match => {
                     i -= 1;
                     j -= 1;
-                },
-                AlignmentOperation::Mismatch {
+                }
+                AlignmentOperation::Subst => {
                     i -= 1;
                     j -= 1;
-                },
-                AlignmentOperation::Insertion {
+                }
+                AlignmentOperation::Ins => {
                     i -= 1;
-                },
-                AlignmentOperation::Deletion {
+                }
+                AlignmentOperation::Del => {
                     j -= 1;
-                },
+                }
                 _ => unreachable!(),
             }
         }
 
+        traceback.reverse();
         traceback
     }
 
     /// Set a trace direction.
     fn set_trace(&mut self, j: usize, i: usize, op: AlignmentOperation) {
         if self.trace.len() <= j {
-            self.trace.push(vec![AlignmentOperation::Match; self.max_band_width * 2 + 1]);
+            self.trace
+                .push(vec![AlignmentOperation::Match; self.max_band_width * 2 + 1]);
         }
         self.trace[j][i] = op;
     }
@@ -194,7 +210,11 @@ impl<F> SwgExtend<F> {
     fn triple_max(&self, d: i32, c: i32, r: i32, m: bool) -> (i32, AlignmentOperation) {
         let score = d.max(c).max(r);
         let dir = if score == d {
-            if m { AlignmentOperation::Match } else { AlignmentOperation::Subst }
+            if m {
+                AlignmentOperation::Match
+            } else {
+                AlignmentOperation::Subst
+            }
         } else if score == c {
             AlignmentOperation::Del
         } else {

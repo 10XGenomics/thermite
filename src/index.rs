@@ -21,6 +21,7 @@ use transcriptome;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
+use std::iter::FromIterator;
 use std::str;
 
 use crate::txome::*;
@@ -135,16 +136,19 @@ impl Index {
                 let tx_ref = &refs[name_to_ref[&NameStrand(tx.chrom.clone(), strand)]];
 
                 let tx_start = if strand {
-                    tx.start() + tx_ref.start_idx
+                    (tx.start() as usize) + tx_ref.start_idx
                 } else {
-                    tx_ref.end_idx - 1 - tx.end()
+                    tx_ref.end_idx - 1 - (tx.end() as usize)
                 };
                 let tx_end = if strand {
-                    tx.end() + tx_ref.start_idx
+                    (tx.end() as usize) + tx_ref.start_idx
                 } else {
-                    tx_ref.end_idx - 1 - tx.start()
+                    tx_ref.end_idx - 1 - (tx.start() as usize)
                 };
-                gene_intervals[gene_idx] = (gene_intervals[gene_idx].0.min(tx_start), gene_intervals[gene_idx].1.max(tx_end));
+                gene_intervals[gene_idx] = (
+                    gene_intervals[gene_idx].0.min(tx_start),
+                    gene_intervals[gene_idx].1.max(tx_end),
+                );
 
                 let mut exons = tx
                     .exons
@@ -190,10 +194,12 @@ impl Index {
             })
             .collect::<Vec<_>>();
 
-        let mut gene_intervals = IntervalTree::from_iter(gene_intervals
-                                                     .into_iter()
-                                                     .enumerate()
-                                                     .map(|(i, (start, end))| (Interval::new(start..end).unwrap(), i)));
+        let gene_intervals = IntervalTree::from_iter(
+            gene_intervals
+                .into_iter()
+                .enumerate()
+                .map(|(i, (start, end))| (Interval::new(start..end).unwrap(), i)),
+        );
 
         let txome = Txome {
             genes,
@@ -213,11 +219,7 @@ impl Index {
     /// Find all SMEMs for a query sequence.
     ///
     /// The MEMs use concatenated reference coordinates.
-    pub fn all_smems(
-        &self,
-        query: &[u8],
-        min_seed_len: usize,
-    ) -> Vec<Mem> {
+    pub fn all_smems(&self, query: &[u8], min_seed_len: usize) -> Vec<Mem> {
         let mut mems = Vec::new();
         // creating the fmd index on the fly here is fast since the structs are just wrappers
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
@@ -231,7 +233,6 @@ impl Index {
             let mem_len = interval.2;
 
             for ref_idx in &forwards_idxs {
-                let seed = Interval::new(*ref_idx..*ref_idx + mem_len).unwrap();
                 mems.push(Mem {
                     query_idx,
                     ref_idx: *ref_idx,
@@ -332,7 +333,7 @@ impl Index {
 }
 
 /// A single maximal exact match.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Mem {
     pub ref_idx: usize,
     pub query_idx: usize,
@@ -340,7 +341,7 @@ pub struct Mem {
 }
 
 /// A single reference (chromosome).
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ref {
     pub name: String,
     pub strand: bool,

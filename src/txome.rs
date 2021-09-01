@@ -61,6 +61,7 @@ pub struct GenomeAlignment {
 }
 // TODO: antisense
 
+#[derive(Debug, Clone)]
 pub enum AlnType {
     Exonic { tx_aln: Alignment, tx_idx: usize },
     Intronic { gene_idx: usize },
@@ -69,20 +70,23 @@ pub enum AlnType {
 
 /// Check if larger interval fully contains the smaller one.
 pub fn contains(larger: &(usize, usize), smaller: &(usize, usize)) -> bool {
-    (b.0 >= a.0 && b.0 < a.1) && (b.1 >= a.0 || b.1 < a.1)
+    smaller.0 >= larger.0 && smaller.1 < larger.1
 }
 
 /// Check if two intervals intersect.
 pub fn intersect(a: &(usize, usize), b: &(usize, usize)) -> bool {
-    (a.0 >= b.0 && a.0 < b.1) || (b.0 >= a.0 || b.0 < a.1)
+    (a.0 >= b.0 && a.0 < b.1) || (b.0 >= a.0 && b.0 < a.1)
 }
 
 /// Lift a MEM from concatenated genome coordinates to a specific exon in a transcript.
 pub fn lift_mem_to_tx(mem: &Mem, tx: &Tx) -> Mem {
     let mut exon_sum = 0;
 
-    for exon in tx.exons {
-        if intersect(&(mem.ref_idx, mem.ref_idx + mem.len), &(exon.start, exon.end)) {
+    for exon in &tx.exons {
+        if intersect(
+            &(mem.ref_idx, mem.ref_idx + mem.len),
+            &(exon.start, exon.end),
+        ) {
             let start = mem.ref_idx.saturating_sub(exon.start) + exon_sum;
             let start_offset = exon.start.saturating_sub(mem.ref_idx);
             let end = (mem.ref_idx + mem.len).min(exon.end) - exon.start + exon_sum;

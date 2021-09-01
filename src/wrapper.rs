@@ -1,7 +1,5 @@
 use rust_htslib::bam::{record::Record, HeaderView};
 
-use bio::alignment::sparse::HashMapFx;
-
 use noodles::sam;
 
 use bincode::deserialize_from;
