@@ -1,4 +1,4 @@
-use bio::alignment::{Alignment, AlignmentOperation};
+use bio::alignment::{Alignment, AlignmentOperation, AlignmentMode};
 use bio::alignment::pairwise::{Scoring, MIN_SCORE};
 
 /// Smith-Waterman-Gotoh banded extension alignment.
@@ -12,6 +12,7 @@ pub struct SwgExtend<F> {
 }
 
 impl<F> SwgExtend<F> {
+    /// Allocate space for alignments up to a certain band size.
     pub fn new(max_band_width: usize, scoring: Scoring<F>) -> Self {
         Self {
             D: vec![0; max_band_width * 2 + 1],
@@ -23,67 +24,113 @@ impl<F> SwgExtend<F> {
         }
     }
 
+    /// Align with a certain band width and X-drop threshold, ending the alignment
+    /// at the highest scoring index.
     pub fn extend(&mut self, x: &[u8], y: &[u8], band_width: usize, x_drop: i32) -> Alignment {
         assert!(band_width <= self.max_band_width);
 
-        /// TODO: zero length should result in zero work
-        let mut x_idx_offset = 0;
-        let w = band_width * 2 + 1;
+        if x.len() == 0 || y.len() == 0 {
+            return Alignment {
+                score: 0,
+                ystart: 0,
+                xstart: 0,
+                yend: 0,
+                xend: 0,
+                ylen: y.len(),
+                xlen: x.len(),
+                operations: Vec::new(),
+                mode: AlignmentMode::Custom,
+            };
+        }
 
+        let w = band_width * 2 + 1;
+        let mut max_score = 0i32;
+        let mut max_idx = (0usize, 0usize);
+
+        // initialize leftmost column
         self.D[0] = 0;
         self.C[0] = 0;
         self.R[0] = 0;
-        self.set_trace(0, 0, AlignmentOperation::Insert, w);
+        self.set_trace(0, 0, AlignmentOperation::Insert);
         for i in 1..w {
             self.C[i] = MIN_SCORE;
             self.R[i] = i * self.scoring.gap_extend + self.scoring.gap_open;
             self.D[i] = self.R[i];
-            self.set_trace(0, i, AlignmentOperation::Insert, w);
+            self.set_trace(0, i, AlignmentOperation::Insert);
         }
 
-        let mut max_score = 0i32;
-        let mut max_idx = (0usize, 0usize);
-
-        for j in 1..y.len() + 1 {
+        // handle first couple of columns where the band always starts at the
+        // first row of the full DP matrix
+        for j in 1..=band_width {
             let mut band_max = MIN_SCORE;
             let mut prev_D = MIN_SCORE;
 
-            for i in 0..w {
-                let x_idx = x_idx_offset + i;
-                if x_idx > x.len() {
-                    break;
-                }
-
+            // compute each cell in the column
+            for i in 0..w.min(x.len() + 1) {
                 self.C[i] = (self.C[i] + self.scoring.gap_extend)
                     .max(self.D[i] + self.scoring.gap_extend + self.scoring.gap_open);
-
-                R[i] = if i == 0 { i32::MIN } else {
-                    (R[i - 1] + self.scoring.gap_extend).max(D[i - 1] + self.scoring.gap_extend + self.scoring.gap_open)
-                };
-
-                let d = if x_idx == 0 {
-                    i32::MIN
+                self.R[i] = if i == 0 {
+                    MIN_SCORE
                 } else {
-                    let m = self.scoring.match_fn(x[x_idx - 1], y[j - 1]);
-                    D[j - 1][i - if j > band_width { 1 } else { 0 }] + m
+                    (self.R[i - 1] + self.scoring.gap_extend).max(self.D[i - 1] + self.scoring.gap_extend + self.scoring.gap_open)
                 };
+                let d = if i == 0 {
+                    MIN_SCORE
+                } else {
+                    prev_D + self.scoring.match_fn(x[i - 1], y[j - 1])
+                };
+                prev_D = self.D[i];
 
-                D[j][i] = d.max(C[i]).max(R[i]);
+                let (curr_D, dir) = self.triple_max(d, self.C[i], self.R[i], x[i - 1] == y[j - 1]);
+                self.D[i] = curr_D;
+                self.set_trace(j, i, dir);
 
-                if D[j][i] > max_score {
-                    max_score = D[j][i];
-                    max_idx = (x_idx, j);
+                if self.D[i] > max_score {
+                    max_score = self.D[i];
+                    max_idx = (i, j);
                 }
 
-                band_max = band_max.max(D[j][i]);
-
-                if x_idx > x.len() {
-                    break;
-                }
+                band_max = band_max.max(self.D[i]);
             }
 
-            if j >= band_width {
-                x_idx_offset += 1;
+            // x drop
+            if band_max < max_score - x_drop {
+                break;
+            }
+        }
+
+        // handle the rest of the columns that shift down in each iteration
+        for j in (band_width + 1)..y.len() + 1 {
+            let mut band_max = MIN_SCORE;
+
+            for i in (j - band_width)..(j - band_width + w).min(x.len() + 1) {
+                // compute the index of the current cell within the column
+                let band_idx = i - (j - band_width);
+
+                self.C[band_idx] = if band_idx >= w - 1 {
+                    MIN_SCORE
+                } else {
+                    (self.C[band_idx + 1] + self.scoring.gap_extend)
+                        .max(self.D[band_idx + 1] + self.scoring.gap_extend + self.scoring.gap_open)
+                };
+                self.R[band_idx] = if band_idx == 0 {
+                    MIN_SCORE
+                } else {
+                    (self.R[band_idx - 1] + self.scoring.gap_extend)
+                        .max(self.D[band_idx - 1] + self.scoring.gap_extend + self.scoring.gap_open)
+                };
+                let d = self.D[band_idx] + self.scoring.match_fn(x[band_idx - 1], y[j - 1]);
+
+                let (curr_D, dir) = self.triple_max(d, self.C[band_idx], self.R[band_idx], x[band_idx - 1] == y[j - 1]);
+                self.D[band_idx] = curr_D;
+                self.set_trace(j, band_idx, dir);
+
+                if self.D[band_idx] > max_score {
+                    max_score = self.D[band_idx];
+                    max_idx = (i, j);
+                }
+
+                band_max = band_max.max(self.D[band_idx]);
             }
 
             // x drop
@@ -105,6 +152,7 @@ impl<F> SwgExtend<F> {
         }
     }
 
+    /// Compute the traceback path ending at a certain position.
     fn trace(&self, mut i: usize, mut j: usize, band_width: usize) -> Vec<AlignmentOperation> {
         let mut traceback = Vec::with_capacity(i + j + 4);
 
@@ -134,10 +182,24 @@ impl<F> SwgExtend<F> {
         traceback
     }
 
-    fn set_trace(&mut self, j: usize, i: usize, op: AlignmentOperation, w: usize) {
+    /// Set a trace direction.
+    fn set_trace(&mut self, j: usize, i: usize, op: AlignmentOperation) {
         if self.trace.len() <= j {
-            self.trace.push(vec![AlignmentOperation::Match; w]);
+            self.trace.push(vec![AlignmentOperation::Match; self.max_band_width * 2 + 1]);
         }
         self.trace[j][i] = op;
+    }
+
+    /// Determine the max of 3, recording the trace direction.
+    fn triple_max(&self, d: i32, c: i32, r: i32, m: bool) -> (i32, AlignmentOperation) {
+        let score = d.max(c).max(r);
+        let dir = if score == d {
+            if m { AlignmentOperation::Match } else { AlignmentOperation::Subst }
+        } else if score == c {
+            AlignmentOperation::Del
+        } else {
+            AlignmentOperation::Ins
+        };
+        (score, dir)
     }
 }
