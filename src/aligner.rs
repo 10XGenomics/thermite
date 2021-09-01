@@ -193,16 +193,22 @@ pub fn align_seed_hit<F: MatchFunc>(
     let aln_ref = index.idx_to_ref(hit.ref_idx).0;
 
     // extend seed hit in genome
-    let ref_seq = &index.seq()[aln_ref.start_idx..aln_ref.end_idx];
-    let relative_hit = {
-        let mut h = hit.clone();
-        h.ref_idx -= aln_ref.start_idx;
-        h
-    };
     let gx_aln = {
-        let mut a = extend_left_right(ref_seq, &relative_hit, read, swg, band_width, x_drop);
-        a.ystart += aln_ref.start_idx;
-        a.yend += aln_ref.start_idx;
+        // region of the genome to align to
+        let seq_start =
+            (hit.ref_idx.saturating_sub(read.len() + band_width)).max(aln_ref.start_idx);
+        let seq_end = (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
+        let ref_seq = index.seq_slice(seq_start, seq_end);
+
+        let relative_hit = {
+            let mut h = hit.clone();
+            h.ref_idx -= seq_start;
+            h
+        };
+
+        let mut a = extend_left_right(&ref_seq, &relative_hit, read, swg, band_width, x_drop);
+        a.ystart += seq_start;
+        a.yend += seq_start;
         a
     };
 
@@ -399,8 +405,8 @@ fn concat_to_chr_aln(index: &Index, aln: Alignment) -> Alignment {
     } else {
         // need to convert interval to always be [left, right) regardless of strand
         Alignment {
-            ystart: aln_ref.len - (aln.yend - aln_ref.start_idx),
-            yend: aln_ref.len - (aln.ystart - aln_ref.start_idx),
+            ystart: aln_ref.len - 1 - (aln.yend - aln_ref.start_idx),
+            yend: aln_ref.len - 1 - (aln.ystart - aln_ref.start_idx),
             ylen: aln_ref.len,
             operations: aln.operations.into_iter().rev().collect(),
             ..aln

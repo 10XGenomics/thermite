@@ -18,11 +18,12 @@ use serde::{Deserialize, Serialize};
 
 use transcriptome;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::iter::FromIterator;
-use std::str;
+use std::{mem, str};
 
 use crate::txome::*;
 
@@ -34,7 +35,6 @@ use crate::txome::*;
 #[derive(Serialize, Deserialize)]
 pub struct Index {
     refs: Vec<Ref>,
-    seq: Vec<u8>,
     sa: SampledSuffixArray<BWT, Less, Occ>,
     txome: Txome,
 }
@@ -64,11 +64,14 @@ impl Index {
             let name = str::from_utf8(record.id())?.split(' ').next().unwrap();
 
             let start_idx = seq.len();
-            seq.extend_from_slice(&record.seq());
+            let mut curr_seq = record.seq().to_vec();
+            curr_seq.make_ascii_uppercase();
+            seq.extend_from_slice(&curr_seq);
             seq.push(b'$');
             name_to_ref.insert(NameStrand(name.to_owned(), true), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
+                seq: Some(curr_seq),
                 strand: true,
                 len: record.seq().len(),
                 start_idx,
@@ -76,12 +79,14 @@ impl Index {
             });
 
             let start_idx = seq.len();
-            let revcomp = dna::revcomp(&record.seq()[..]);
+            let mut revcomp = dna::revcomp(&record.seq()[..]);
+            revcomp.make_ascii_uppercase();
             seq.extend_from_slice(&revcomp);
             seq.push(b'$');
             name_to_ref.insert(NameStrand(name.to_owned(), false), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
+                seq: None,
                 strand: false,
                 len: record.seq().len(),
                 start_idx,
@@ -89,19 +94,17 @@ impl Index {
             });
         }
 
-        seq.make_ascii_uppercase();
-
-        let sa = divsufsort64(&seq)
-            .expect("Suffix array construction failed!")
-            .into_iter()
-            .map(|x| x as usize)
-            .collect::<Vec<_>>() as RawSuffixArray;
+        let sa =
+            cast_vec_i64_to_usize(divsufsort64(&seq).expect("Suffix array construction failed!"))
+                as RawSuffixArray;
         let bwt = bwt(&seq, &sa);
         // use a subset of the required alphabet for FMD index
         let alpha = Alphabet::new(b"ACGNT");
         let less = less(&bwt, &alpha);
         let occ = Occ::new(&bwt, occ_sampling_rate as u32, &alpha);
         let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
+
+        drop(seq);
 
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
@@ -122,7 +125,7 @@ impl Index {
             })
             .collect::<Vec<_>>();
 
-        let mut gene_intervals = vec![(seq.len(), 0); genes.len()];
+        let mut gene_intervals = vec![(sa.bwt().len(), 0); genes.len()];
         let mut exon_to_tx = IntervalTree::new();
         let txs = txome_txs
             .into_iter()
@@ -208,12 +211,7 @@ impl Index {
             gene_intervals,
         };
 
-        Ok(Index {
-            refs,
-            seq,
-            sa,
-            txome,
-        })
+        Ok(Index { refs, sa, txome })
     }
 
     /// Find all SMEMs for a query sequence.
@@ -293,15 +291,30 @@ impl Index {
         &self.txome
     }
 
-    /// Get the concatenated reference sequence.
-    pub fn seq(&self) -> &[u8] {
-        &self.seq
+    /// Get a subsequence of a reference chromosome based on an interval
+    /// specified with concatenated coordinates.
+    pub fn seq_slice(&self, start: usize, end: usize) -> Cow<[u8]> {
+        let ref_idx = self.refs.partition_point(|x| x.end_idx <= start);
+        let curr_ref = &self.refs[ref_idx];
+
+        match &curr_ref.seq {
+            Some(s) => {
+                let start = start - curr_ref.start_idx;
+                let end = end - curr_ref.start_idx;
+                Cow::Borrowed(&s[start..end])
+            }
+            None => {
+                let prev_ref = &self.refs[ref_idx - 1];
+                let start = prev_ref.end_idx + curr_ref.len - 1 - end;
+                let end = prev_ref.end_idx + curr_ref.len - 1 - start;
+                Cow::Owned(dna::revcomp(&prev_ref.seq.as_ref().unwrap()[start..end]))
+            }
+        }
     }
 
     /// Print out stats about the index.
     pub fn print_stats(&self) {
         println!("Number of chromosomes\t{}", self.refs.len());
-        println!("Length of concatenated sequence\t{}", self.seq.len());
         println!(
             "Length of suffix array\t{}",
             self.sa.len() / self.sa.sampling_rate()
@@ -326,9 +339,30 @@ impl Index {
         println!("\t\tOcc\t{}", serialized_size(self.sa.occ()).unwrap());
         println!("\tTranscriptome\t{}", serialized_size(&self.txome).unwrap());
         println!(
-            "\t\tExon -> transcript interval tree\t{}",
+            "\t\tExon interval tree\t{}",
             serialized_size(&self.txome.exon_to_tx).unwrap()
         );
+        println!(
+            "\t\tGene interval tree\t{}",
+            serialized_size(&self.txome.gene_intervals).unwrap()
+        );
+    }
+}
+
+/// Use unsafe magic to convert i64 vector to usize vector in place.
+fn cast_vec_i64_to_usize(v: Vec<i64>) -> Vec<usize> {
+    // double check necessary conditions before doing a pointer cast
+    // size and alignment must match so the allocator can safely free the memory
+    assert_eq!(mem::size_of::<i64>(), mem::size_of::<usize>());
+    assert_eq!(mem::align_of::<i64>(), mem::align_of::<usize>());
+
+    unsafe {
+        let mut v = mem::ManuallyDrop::new(v);
+        let ptr = v.as_mut_ptr();
+        let len = v.len();
+        let cap = v.capacity();
+
+        Vec::from_raw_parts(ptr as *mut usize, len, cap)
     }
 }
 
@@ -341,9 +375,10 @@ pub struct Mem {
 }
 
 /// A single reference (chromosome).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Ref {
     pub name: String,
+    pub seq: Option<Vec<u8>>,
     pub strand: bool,
     pub len: usize,
     pub start_idx: usize,
