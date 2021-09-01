@@ -299,15 +299,17 @@ impl Index {
 
         match &curr_ref.seq {
             Some(s) => {
-                let start = start - curr_ref.start_idx;
-                let end = end - curr_ref.start_idx;
-                Cow::Borrowed(&s[start..end])
+                let chrom_start = start - curr_ref.start_idx;
+                let chrom_end = end - curr_ref.start_idx;
+                Cow::Borrowed(&s[chrom_start..chrom_end])
             }
             None => {
                 let prev_ref = &self.refs[ref_idx - 1];
-                let start = prev_ref.end_idx + curr_ref.len - 1 - end;
-                let end = prev_ref.end_idx + curr_ref.len - 1 - start;
-                Cow::Owned(dna::revcomp(&prev_ref.seq.as_ref().unwrap()[start..end]))
+                let chrom_start = curr_ref.end_idx - 1 - end;
+                let chrom_end = curr_ref.end_idx - 1 - start;
+                Cow::Owned(dna::revcomp(
+                    &prev_ref.seq.as_ref().unwrap()[chrom_start..chrom_end],
+                ))
             }
         }
     }
