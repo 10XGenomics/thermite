@@ -80,8 +80,6 @@ $(aln).sam: $(ref).fasta.tai $(query)
 # Align the query to the reference (output bam).
 $(aln).bam: $(ref).fasta.tai $(query)
 	thermite align -a $(aln_flags) -o $@ $^
-	samtools sort -n $@ > temp.bam
-	mv temp.bam $@
 
 # Get STAR comparison metrics.
 comparison_metrics.txt: $(aln).bam $(compare)

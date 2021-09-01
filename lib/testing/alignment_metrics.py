@@ -72,6 +72,7 @@ def main():
         metrics.n_concordant_align += (
             1 if row1.compare(row2) == 0 else 0
         )  # will this work?
+        # should just compare chromosome, start position, end position, and strand
     print(f"file1: {args.in1}, file2: {args.in2}")
     print(
         f"file1 identical alignment to ref fraction: {metrics.n_in1_identical_align/metrics.n_reads}"
@@ -93,7 +94,8 @@ def main():
 def get_alignment_reader(path: str) -> Iterable:
     _, ext = os.path.splitext(path)
     if ext == ".bam" or ext == ".sam":
-        samfile = pysam.AlignmentFile(path, "rb")
+        pysam.sort("-n", "-o", f"namesorted_{path}", path)
+        samfile = pysam.AlignmentFile(f"namesorted_{path}", "rb")
         return (samfile.fetch(until_eof=True), "sam")
     elif ext == ".paf":
         return (csv.reader(open(path), delimiter="\t"), "paf")
