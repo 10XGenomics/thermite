@@ -53,14 +53,14 @@ impl Index {
         let mut refs = Vec::with_capacity(8);
         let mut seq = Vec::with_capacity(1024);
 
-        #[derive(Clone, Hash, PartialEq, Eq)]
+        #[derive(Debug, Clone, Hash, PartialEq, Eq)]
         struct NameStrand(String, bool);
         let mut name_to_ref: HashMap<NameStrand, usize> = HashMap::new();
 
         // concatenate all reference sequences
         while let Some(record) = ref_reader.next() {
             let record = record?;
-            let name = str::from_utf8(record.id())?;
+            let name = str::from_utf8(record.id())?.split(' ').next().unwrap();
 
             let start_idx = seq.len();
             seq.extend_from_slice(&record.seq());
