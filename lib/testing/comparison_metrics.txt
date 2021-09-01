@@ -5,4 +5,5 @@ file1 unaligned reads fraction: 0.0
 file2 unaligned reads fraction: 0.631464
 file1 and file2 reads on same chr fraction: 0.368536
 file1 and file2 identical alignments fraction: 0.0
+file1 and file2 overlapping align fraction: 0.351492
 file1 and file2 reads on same gene fraction: 0.9539262088626865
