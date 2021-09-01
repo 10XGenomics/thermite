@@ -68,16 +68,17 @@ def main():
         metrics.n_in1_unaligned += row1.is_unmapped
         metrics.n_in2_unaligned += row2.is_unmapped
         metrics.n_same_chromosome_align += row1.reference_name == row2.reference_name
+        metrics.n_overlapping_align += queries_overlap(row1, row2)
+        metrics.n_identical_align += queries_identical(row1, row2)
         try:
             metrics.n_same_gene_align += row1.get_tag("GX") == row2.get_tag("GX")
             metrics.n_reads_on_genes += 1
         except KeyError:
             pass
 
-        metrics.n_concordant_align += (
-            1 if row1.compare(row2) == 0 else 0
-        )  # will this work?
-        # should just compare chromosome, start position, end position, and strand
+        # metrics.n_concordant_align += (
+        #     1 if row1.compare(row2) == 0 else 0
+        # )  # will this work?
     print(f"file1: {args.in1}, file2: {args.in2}")
     print(
         f"file1 identical alignment to ref fraction: {metrics.n_in1_identical_align/metrics.n_reads}"
@@ -93,6 +94,9 @@ def main():
 
     print(
         f"file1 and file2 identical alignments fraction: {metrics.n_concordant_align/metrics.n_reads}"
+    )
+    print(
+        f"file1 and file2 overlapping align fraction: {metrics.n_overlapping_align/metrics.n_reads}"
     )
     print(
         f"file1 and file2 reads on same gene fraction: {metrics.n_same_gene_align/metrics.n_reads_on_genes}"
@@ -117,6 +121,30 @@ def sam_query_identical_to_reference(
     alignment: pysam.AlignedSegment,
 ) -> int:
     return alignment.query_alignment_length == alignment.reference_length
+
+
+def queries_identical(
+    alignment1: pysam.AlignedSegment, alignment2: pysam.AlignedSegment
+) -> int:
+    return (
+        alignment1.reference_name == alignment2.reference_name
+        and alignment1.reference_start == alignment2.reference_start
+        and alignment1.reference_end == alignment2.reference_end
+        and alignment1.is_reverse == alignment2.is_reverse
+    )
+
+
+def queries_overlap(alignment1: pysam.AlignedSegment, alignment2: pysam.AlignedSegment):
+    return alignment1.reference_name == alignment2.reference_name and (
+        (
+            alignment1.reference_end > alignment2.reference_start
+            and alignment1.reference_start < alignment2.reference_end
+        )
+        or (
+            alignment1.reference_start < alignment2.reference_end
+            and alignment1.reference_end > alignment2.reference_start
+        )
+    )
 
 
 def sam_query_unmapped(alignment: pysam.AlignedSegment) -> int:
