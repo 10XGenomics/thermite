@@ -93,7 +93,7 @@ def main():
 def get_alignment_reader(path: str) -> Iterable:
     _, ext = os.path.splitext(path)
     if ext == ".bam" or ext == ".sam":
-        samfile = pysam.AlignmentFile(path)
+        samfile = pysam.AlignmentFile(path, "rb")
         return (samfile.fetch(until_eof=True), "sam")
     elif ext == ".paf":
         return (csv.reader(open(path), delimiter="\t"), "paf")
