@@ -96,10 +96,10 @@ def main():
         f"file1 and file2 identical alignments fraction: {metrics.n_concordant_align/metrics.n_reads}"
     )
     print(
-        f"file1 and file2 overlapping align fraction: {metrics.n_overlapping_align/metrics.n_reads}"
+        f"file1 and file2 overlapping align fraction: {round(metrics.n_overlapping_align/metrics.n_reads,3)}"
     )
     print(
-        f"file1 and file2 reads on same gene fraction: {metrics.n_same_gene_align/metrics.n_reads_on_genes}"
+        f"file1 and file2 reads on same gene fraction: {round(metrics.n_same_gene_align/metrics.n_reads_on_genes,3)}"
     )
 
 
