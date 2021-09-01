@@ -22,9 +22,17 @@ ifeq ($(dataset),test)
 else ifeq ($(dataset),chrM)
 	# Use the human mitochondrial genome data.
 	ref=GRCh38-2020-A-chrM
-	query=namesorted_PBMC_10k_500k_reads_chrM.fastq.gz
-	aln=thermite_PBMC_10k_500k_reads_chrM
-	compare=cellranger_namesorted_PBMC_10k_500k_reads_chrM.paf
+	query=pbmc10k_chrM_500k_reads.fastq.gz
+	aln=thermite_pbmc10k_chrM_500k_reads
+	compare=cellranger_pbmc10k_chrM_500k_reads.bam
+	index_flags=
+	aln_flags=-k20 --min-total-hit-len=40
+else ifeq ($(dataset), chr21)
+	# Use chromosome 21 dataset.
+	ref=GRCh38-2020-A-chr21
+	query=pbmc10k_chr21_500k_reads.fastq.gz
+	aln=thermite_pbmc10k_chr21_500k_reads
+	compare=cellranger_pbmc10k_chr21_500k_reads.bam
 	index_flags=
 	aln_flags=-k20 --min-total-hit-len=40
 else
@@ -66,11 +74,15 @@ $(aln).paf: $(ref).fasta.tai $(query)
 # Align the query to the reference (output sam).
 $(aln).sam: $(ref).fasta.tai $(query)
 	thermite align -a $(aln_flags) -o $@ $^
+	samtools sort -n $@ | samtools view -h > temp.sam
+	mv temp.sam $@
 
 # Align the query to the reference (output bam).
 $(aln).bam: $(ref).fasta.tai $(query)
 	thermite align -a $(aln_flags) -o $@ $^
+	samtools sort -n $@ > temp.bam
+	mv temp.bam $@
 
 # Get STAR comparison metrics.
-comparison_metrics.txt: $(aln).paf $(compare)
+comparison_metrics.txt: $(aln).bam $(compare)
 	python3 ../lib/testing/alignment_metrics.py $(compare) $< > $@
