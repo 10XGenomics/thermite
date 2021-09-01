@@ -46,6 +46,8 @@ jobs:
         run: |
           cd data/
           make metrics dataset=chr21
+          make metrics dataset=chrM
+          cat chr21_comparison_metrics.txt chrM_comparison_metrics.txt > comparison_metrics.txt
       - uses: machine-learning-apps/pr-comment@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
