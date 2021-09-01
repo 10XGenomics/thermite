@@ -8,8 +8,8 @@ use bincode;
 
 use std::ffi::OsStr;
 use std::fs::File;
-use std::io;
 use std::io::prelude::*;
+use std::io::{self, BufReader, BufWriter};
 use std::path::Path;
 
 use thermite_aligner::aln_writer::OutputFormat;
@@ -36,8 +36,8 @@ fn main() -> Result<()> {
             }
 
             let index_file: Box<dyn Write> = match &index_opts.index[..] {
-                "-" => Box::new(io::stdout()),
-                _ => Box::new(File::create(&index_opts.index)?),
+                "-" => Box::new(BufWriter::new(io::stdout())),
+                _ => Box::new(BufWriter::new(File::create(&index_opts.index)?)),
             };
             bincode::serialize_into(index_file, &index)?;
         }
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
                 OutputFormat::Paf
             };
 
-            let index_file = File::open(&align_opts.index)?;
+            let index_file = BufReader::new(File::open(&align_opts.index)?);
             let index = bincode::deserialize_from(index_file)?;
 
             aligner::align_reads_from_file(
