@@ -81,19 +81,23 @@ def main():
         # )  # will this work?
     print(f"file1: {args.in1}, file2: {args.in2}")
     print(
-        f"file1 identical alignment to ref fraction: {metrics.n_in1_identical_align/metrics.n_reads}"
+        f"file1 identical alignment to ref fraction: {round(metrics.n_in1_identical_align/metrics.n_reads,3)}"
     )
     print(
-        f"file2 identical alignment to ref fraction: {metrics.n_in2_identical_align/metrics.n_reads}"
+        f"file2 identical alignment to ref fraction: {round(metrics.n_in2_identical_align/metrics.n_reads,3)}"
     )
-    print(f"file1 unaligned reads fraction: {metrics.n_in1_unaligned/metrics.n_reads}")
-    print(f"file2 unaligned reads fraction: {metrics.n_in2_unaligned/metrics.n_reads}")
     print(
-        f"file1 and file2 reads on same chr fraction: {metrics.n_same_chromosome_align/metrics.n_reads}"
+        f"file1 unaligned reads fraction: {round(metrics.n_in1_unaligned/metrics.n_reads,3)}"
+    )
+    print(
+        f"file2 unaligned reads fraction: {round(metrics.n_in2_unaligned/metrics.n_reads,3)}"
+    )
+    print(
+        f"file1 and file2 reads on same chr fraction: {round(metrics.n_same_chromosome_align/metrics.n_reads,3)}"
     )
 
     print(
-        f"file1 and file2 identical alignments fraction: {metrics.n_concordant_align/metrics.n_reads}"
+        f"file1 and file2 identical alignments fraction: {round(metrics.n_concordant_align/metrics.n_reads,3)}"
     )
     print(
         f"file1 and file2 overlapping align fraction: {round(metrics.n_overlapping_align/metrics.n_reads,3)}"
