@@ -142,31 +142,41 @@ pub fn aln_to_sam_record(
     };
     let mapq = multimapq(multimap);
     let data = {
-        let tx = &index.txome().txs[aln.tx_idx];
-        let gene = &index.txome().genes[tx.gene_idx];
-        let tx_val = format!(
-            "{},{}{},{}",
-            tx.id,
-            if tx.strand { '+' } else { '-' },
-            // 1-based position
-            aln.tx_aln.ystart + 1,
-            aln.tx_aln.cigar(false)
-        );
-        Data::try_from(vec![
+        let mut d = Data::try_from(vec![
             Field::new(Tag::AlignmentScore, Value::Int(aln.gx_aln.score as i64)),
             Field::new(Tag::AlignmentHitCount, Value::Int(multimap as i64)),
-            Field::new(Tag::Other("TX".to_owned()), Value::String(tx_val)),
-            Field::new(
-                Tag::Other("GX".to_owned()),
-                Value::String(gene.id.to_owned()),
-            ),
-            Field::new(
-                Tag::Other("GN".to_owned()),
-                Value::String(gene.name.to_owned()),
-            ),
-            Field::new(Tag::Other("RE".to_owned()), Value::Char('E')),
-        ])?
+        ])?;
+        match aln.aln_type {
+            AlignmentType::Exonic { tx_idx, tx_aln } => {
+                let tx = &index.txome().txs[tx_idx];
+                let gene = &index.txome().genes[tx.gene_idx];
+                let tx_val = format!(
+                    "{},{}{},{}",
+                    tx.id,
+                    if tx.strand { '+' } else { '-' },
+                    // 1-based position
+                    tx_aln.ystart + 1,
+                    tx_aln.cigar(false)
+                );
+
+                d.insert(Tag::Other("TX".to_owned()), Value::String(tx_val));
+                d.insert(Tag::Other("GX".to_owned()), Value::String(gene.id.to_owned()));
+                d.insert(Tag::Other("GN".to_owned()), Value::String(gene.name.to_owned()));
+                d.insert(Tag::Other("RE".to_owned()), Value::Char('E'));
+            },
+            AlignmentType::Intronic { gene_idx } => {
+                let gene = &index.txome().genes[gene_idx];
+                d.insert(Tag::Other("GX".to_owned()), Value::String(gene.id.to_owned()));
+                d.insert(Tag::Other("GN".to_owned()), Value::String(gene.name.to_owned()));
+                d.insert(Tag::Other("RE".to_owned()), Value::Char('N'));
+            },
+            AlignmentType::Intergenic => {
+                d.insert(Tag::Other("RE".to_owned()), Value::Char('I'));
+            },
+        }
+        d
     };
+
     let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
