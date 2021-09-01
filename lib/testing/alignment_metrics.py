@@ -68,6 +68,11 @@ def main():
         metrics.n_in1_unaligned += row1.is_unmapped
         metrics.n_in2_unaligned += row2.is_unmapped
         metrics.n_same_chromosome_align += row1.reference_name == row2.reference_name
+        try:
+            metrics.n_same_gene_align += row1.get_tag("GX") == row2.get_tag("GX")
+            metrics.n_reads_on_genes += 1
+        except KeyError:
+            pass
 
         metrics.n_concordant_align += (
             1 if row1.compare(row2) == 0 else 0
@@ -88,6 +93,9 @@ def main():
 
     print(
         f"file1 and file2 identical alignments fraction: {metrics.n_concordant_align/metrics.n_reads}"
+    )
+    print(
+        f"file1 and file2 reads on same gene fraction: {metrics.n_same_gene_align/metrics.n_reads_on_genes}"
     )
 
 
@@ -170,6 +178,7 @@ def compare_sam_to_paf(
 @dataclass
 class Metrics:
     n_reads: int = 0
+    n_reads_on_genes: int = 0
     n_in1_identical_align: int = 0
     n_in2_identical_align: int = 0
     n_concordant_align: int = 0
