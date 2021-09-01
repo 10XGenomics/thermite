@@ -1,4 +1,4 @@
-file1: namesorted_cellranger_pbmc10k_chr21_500k_reads.bam, file2: thermite_pbmc10k_chr21_500k_reads.bam
+file1: cellranger_pbmc10k_chr21_500k_reads.bam, file2: thermite_pbmc10k_chr21_500k_reads.bam
 file1 identical alignment to ref fraction: 0.907342
 file2 identical alignment to ref fraction: 0.28191
 file1 unaligned reads fraction: 0.0
