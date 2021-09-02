@@ -40,7 +40,11 @@ impl<F: MatchFunc> SwgExtend<F> {
                 xend: 0,
                 ylen: y.len(),
                 xlen: x.len(),
-                operations: Vec::new(),
+                operations: if x.len() > 0 {
+                    vec![AlignmentOperation::Xclip(x.len())]
+                } else {
+                    Vec::new()
+                },
                 mode: AlignmentMode::Custom,
             };
         }
