@@ -70,15 +70,16 @@ def main():
         metrics.n_same_chromosome_align += row1.reference_name == row2.reference_name
         metrics.n_overlapping_align += queries_overlap(row1, row2)
         metrics.n_identical_align += queries_identical(row1, row2)
-        try:
-            metrics.n_same_gene_align += row1.get_tag("GX") == row2.get_tag("GX")
+        if row1.has_tag("GX") and row2.has_tag("GX"):
+            metrics.n_same_gene_align += (
+                len(
+                    set(row1.get_tag("GX").split(";"))
+                    & set(row2.get_tag("GX").split(";"))
+                )
+                > 0
+            )
             metrics.n_reads_on_genes += 1
-        except KeyError:
-            pass
 
-        # metrics.n_concordant_align += (
-        #     1 if row1.compare(row2) == 0 else 0
-        # )  # will this work?
     print(f"file1: {args.in1}, file2: {args.in2}")
     print(
         f"file1 identical alignment to ref fraction: {round(metrics.n_in1_identical_align/metrics.n_reads,3)}"
@@ -139,21 +140,20 @@ def queries_identical(
 
 
 def queries_overlap(alignment1: pysam.AlignedSegment, alignment2: pysam.AlignedSegment):
-    return alignment1.reference_name == alignment2.reference_name and (
-        (
-            alignment1.reference_end > alignment2.reference_start
-            and alignment1.reference_start < alignment2.reference_end
-        )
-        or (
-            alignment1.reference_start < alignment2.reference_end
-            and alignment1.reference_end > alignment2.reference_start
+    return (
+        alignment1.reference_name == alignment2.reference_name
+        and alignment1.is_reverse == alignment2.is_reverse
+        and (
+            (
+                alignment1.reference_end > alignment2.reference_start
+                and alignment1.reference_start < alignment2.reference_end
+            )
+            or (
+                alignment1.reference_start < alignment2.reference_end
+                and alignment1.reference_end > alignment2.reference_start
+            )
         )
     )
-
-
-def sam_query_unmapped(alignment: pysam.AlignedSegment) -> int:
-    if alignment.is_unmapped:
-        return
 
 
 def parse_paf_alignment(alignment: list) -> namedtuple:
