@@ -1,3 +1,6 @@
+// allow unused imports since the transcriptome feature may be disabled
+#![allow(unused_imports)]
+
 use anyhow::Result;
 
 use needletail::*;
@@ -16,6 +19,7 @@ use libdivsufsort_rs::divsufsort64;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "transcriptome")]
 use transcriptome;
 
 use std::borrow::Cow;
@@ -44,6 +48,7 @@ impl Index {
     ///
     /// The fasta file is expected to be already indexed, so a .fasta.fai file exists
     /// with the same file name.
+    #[cfg(feature = "transcriptome")]
     pub fn create_from_files(
         ref_path: &str,
         annot_path: &str,
@@ -355,6 +360,7 @@ impl Index {
 }
 
 /// Use unsafe magic to convert i64 vector to usize vector in place.
+#[allow(dead_code)]
 fn cast_vec_i64_to_usize(v: Vec<i64>) -> Vec<usize> {
     // double check necessary conditions before doing a pointer cast
     // size and alignment must match so the allocator can safely free the memory

@@ -24,7 +24,7 @@ needletail = "^0.4.1"
 noodles = { version = "^0.1.0", features = ["bam", "core", "gff", "sam"] }
 rust-htslib = "^0.38.2"
 serde = { version = "^1.0", features = ["derive"] }
-transcriptome = { version = "^0.1.0", git = "https://github.com/10XDev/cellranger" }
+transcriptome = { version = "^0.1.0", git = "https://github.com/10XDev/cellranger", optional = true }
 
 [profile.dev]
 opt-level = 3
@@ -37,3 +37,6 @@ lto = true
 
 [profile.test]
 opt-level = 3
+
+[features]
+default = ["transcriptome"]
