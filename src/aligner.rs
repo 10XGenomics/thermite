@@ -417,8 +417,8 @@ fn concat_to_chr_aln(index: &Index, aln: Alignment) -> Alignment {
     } else {
         // need to convert interval to always be [left, right) regardless of strand
         Alignment {
-            ystart: aln_ref.len - 1 - (aln.yend - aln_ref.start_idx),
-            yend: aln_ref.len - 1 - (aln.ystart - aln_ref.start_idx),
+            ystart: aln_ref.len - (aln.yend - aln_ref.start_idx),
+            yend: aln_ref.len - (aln.ystart - aln_ref.start_idx),
             ylen: aln_ref.len,
             operations: aln.operations.into_iter().rev().collect(),
             ..aln

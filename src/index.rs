@@ -63,6 +63,7 @@ impl Index {
             let record = record?;
             let name = str::from_utf8(record.id())?.split(' ').next().unwrap();
 
+            // end index includes '$', length does not
             let start_idx = seq.len();
             let mut curr_seq = record.seq().to_vec();
             curr_seq.make_ascii_uppercase();

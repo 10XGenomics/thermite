@@ -26,7 +26,7 @@ else ifeq ($(dataset),chrM)
 	aln=thermite_PBMC_10k_500k_reads_chrM
 	compare=cellranger_namesorted_PBMC_10k_500k_reads_chrM.paf
 	index_flags=
-	aln_flags=-k20
+	aln_flags=-k20 --intron-mode
 else
 	$(error The dataset name $(dataset) is invalid!)
 endif
