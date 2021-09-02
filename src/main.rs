@@ -92,7 +92,7 @@ pub struct Index {
     #[clap(short = 'o', long = "output", default_value = "-")]
     pub index: String,
     /// Suffix array sampling rate
-    #[clap(long, default_value = "16")]
+    #[clap(long, default_value = "32")]
     pub sa_sampling_rate: usize,
     /// FM index Occ array sampling rate
     #[clap(long, default_value = "128")]

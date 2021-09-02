@@ -7,7 +7,7 @@ pub struct SwgExtend<F: MatchFunc> {
     D: Vec<i32>,
     C: Vec<i32>,
     R: Vec<i32>,
-    trace: Vec<Vec<AlignmentOperation>>,
+    trace: Vec<AlignmentOperation>,
     scoring: Scoring<F>,
     max_band_width: usize,
 }
@@ -176,9 +176,9 @@ impl<F: MatchFunc> SwgExtend<F> {
 
         while i > 0 || j > 0 {
             let band_idx = i - j.saturating_sub(band_width);
-            traceback.push(self.trace[j][band_idx]);
+            traceback.push(self.get_trace(j, band_idx));
 
-            match self.trace[j][band_idx] {
+            match self.get_trace(j, band_idx) {
                 AlignmentOperation::Match => {
                     i -= 1;
                     j -= 1;
@@ -203,11 +203,18 @@ impl<F: MatchFunc> SwgExtend<F> {
 
     /// Set a trace direction.
     fn set_trace(&mut self, j: usize, i: usize, op: AlignmentOperation) {
-        if self.trace.len() <= j {
+        let w = self.max_band_width * 2 + 1;
+        if self.trace.len() <= j * w {
             self.trace
-                .push(vec![AlignmentOperation::Match; self.max_band_width * 2 + 1]);
+                .resize(self.trace.len() + w, AlignmentOperation::Match);
         }
-        self.trace[j][i] = op;
+        self.trace[j * w + i] = op;
+    }
+
+    /// Get a trace direction.
+    fn get_trace(&self, j: usize, i: usize) -> AlignmentOperation {
+        let w = self.max_band_width * 2 + 1;
+        self.trace[j * w + i]
     }
 
     /// Determine the max of 3, recording the trace direction.
