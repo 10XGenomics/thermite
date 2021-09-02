@@ -223,3 +223,80 @@ impl<F: MatchFunc> SwgExtend<F> {
         (score, dir)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use bio::alignment::AlignmentOperation::*;
+
+    #[test]
+    fn test_swg_extend() {
+        let scoring = Scoring::from_scores(-1, -1, 1, -1);
+        let mut swg = SwgExtend::new(4, scoring);
+
+        let x = b"AAAAAAAA";
+        let y = b"AAAAAAAA";
+        let correct_aln = Alignment {
+            score: 8,
+            ystart: 0,
+            xstart: 0,
+            yend: 8,
+            xend: 8,
+            ylen: 8,
+            xlen: 8,
+            operations: vec![Match, Match, Match, Match, Match, Match, Match, Match],
+            mode: AlignmentMode::Custom,
+        };
+        let res_aln = swg.extend(x, y, 1, 1);
+        assert_eq!(res_aln, correct_aln);
+
+        let x = b"AAAAATTT";
+        let y = b"AAAAAAAA";
+        let correct_aln = Alignment {
+            score: 5,
+            ystart: 0,
+            xstart: 0,
+            yend: 5,
+            xend: 5,
+            ylen: 8,
+            xlen: 8,
+            operations: vec![Match, Match, Match, Match, Match, Xclip(3)],
+            mode: AlignmentMode::Custom,
+        };
+        let res_aln = swg.extend(x, y, 1, 1);
+        assert_eq!(res_aln, correct_aln);
+
+        let x = b"AAATAAAA";
+        let y = b"AAAAAAAA";
+        let correct_aln = Alignment {
+            score: 6,
+            ystart: 0,
+            xstart: 0,
+            yend: 8,
+            xend: 8,
+            ylen: 8,
+            xlen: 8,
+            operations: vec![Match, Match, Match, Subst, Match, Match, Match, Match],
+            mode: AlignmentMode::Custom,
+        };
+        let res_aln = swg.extend(x, y, 1, 1);
+        assert_eq!(res_aln, correct_aln);
+
+        let x = b"AAATTTT";
+        let y = b"AAACCTTTT";
+        let correct_aln = Alignment {
+            score: 4,
+            ystart: 0,
+            xstart: 0,
+            yend: 9,
+            xend: 7,
+            ylen: 9,
+            xlen: 7,
+            operations: vec![Match, Match, Match, Del, Del, Match, Match, Match, Match],
+            mode: AlignmentMode::Custom,
+        };
+        let res_aln = swg.extend(x, y, 2, 3);
+        assert_eq!(res_aln, correct_aln);
+    }
+}

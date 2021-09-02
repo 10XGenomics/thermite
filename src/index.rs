@@ -327,6 +327,8 @@ impl Index {
         println!("Number of genes\t{}", self.txome.genes.len());
         println!("Number of transcripts\t{}", self.txome.txs.len());
 
+        println!();
+
         use bincode::serialized_size;
         println!(
             "Serialized size of index\t{}",

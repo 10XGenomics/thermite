@@ -51,7 +51,7 @@ impl Exon {
 ///
 /// This also contains the transcriptome alignment from before this alignment
 /// is lifted to genome coordinates.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenomeAlignment {
     pub gx_aln: Alignment,
     pub aln_type: AlnType,
@@ -59,9 +59,9 @@ pub struct GenomeAlignment {
     pub strand: bool,
     pub primary: bool,
 }
-// TODO: antisense
+// TODO: antisense alignments to genes and transcripts
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AlnType {
     Exonic { tx_aln: Alignment, tx_idx: usize },
     Intronic { gene_idx: usize },
@@ -164,6 +164,69 @@ mod test {
     use super::*;
 
     use bio::alignment::AlignmentMode;
+
+    #[test]
+    fn test_lift_mem_to_tx() {
+        let exons = vec![
+            Exon {
+                start: 3,
+                end: 6,
+                tx_idx: 0,
+            },
+            Exon {
+                start: 10,
+                end: 13,
+                tx_idx: 0,
+            },
+        ];
+        let tx = Tx {
+            id: "".to_owned(),
+            chrom: "".to_owned(),
+            strand: true,
+            exons,
+            seq: Vec::new(),
+            gene_idx: 0,
+        };
+
+        let mem = Mem {
+            ref_idx: 4,
+            query_idx: 3,
+            len: 2,
+        };
+        let correct_mem = Mem {
+            ref_idx: 1,
+            query_idx: 3,
+            len: 2,
+        };
+        let res_mem = lift_mem_to_tx(&mem, &tx);
+        assert_eq!(res_mem, correct_mem);
+
+        let mem = Mem {
+            ref_idx: 9,
+            query_idx: 3,
+            len: 3,
+        };
+        let correct_mem = Mem {
+            ref_idx: 3,
+            query_idx: 4,
+            len: 2,
+        };
+        let res_mem = lift_mem_to_tx(&mem, &tx);
+        assert_eq!(res_mem, correct_mem);
+
+        let mem = Mem {
+            ref_idx: 12,
+            query_idx: 3,
+            len: 3,
+        };
+        let correct_mem = Mem {
+            ref_idx: 5,
+            query_idx: 3,
+            len: 1,
+        };
+        let res_mem = lift_mem_to_tx(&mem, &tx);
+        assert_eq!(res_mem, correct_mem);
+    }
 
     #[test]
     fn test_lift_tx_to_gx() {
