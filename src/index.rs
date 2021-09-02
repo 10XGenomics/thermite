@@ -16,8 +16,6 @@ use libdivsufsort_rs::divsufsort64;
 
 use serde::{Deserialize, Serialize};
 
-use transcriptome;
-
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
@@ -25,6 +23,7 @@ use std::io::BufReader;
 use std::iter::FromIterator;
 use std::{mem, str};
 
+use crate::transcriptome;
 use crate::txome::*;
 
 /// An index of a set of reference sequences, along with the transcriptome.
