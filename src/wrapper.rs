@@ -5,6 +5,7 @@ use noodles::sam;
 use bincode::deserialize_from;
 
 use std::fs::{self, File};
+use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -26,17 +27,21 @@ impl ThermiteAligner {
     /// Create a new thermite aligner instance from an existing Thermite Aligner Index file.
     pub fn new(index_path: &Path) -> Self {
         let index = Arc::new(
-            deserialize_from(
+            deserialize_from(BufReader::new(
                 File::open(index_path).expect(&format!("Failed to open {}", index_path.display())),
-            )
+            ))
             .unwrap(),
         );
+
+        // default settings
         let align_opts = AlignOpts {
             min_seed_len: 20,
             min_aln_score_percent: 0.66,
             min_aln_score: 30,
             multimap_score_range: 1,
+            intron_mode: false,
         };
+
         let header_view = {
             let mut writer = sam::Writer::new(Vec::with_capacity(64));
             writer
@@ -44,6 +49,7 @@ impl ThermiteAligner {
                 .unwrap();
             HeaderView::from_bytes(writer.get_ref())
         };
+
         Self {
             index,
             align_opts,

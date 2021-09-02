@@ -140,6 +140,13 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
     for hit in &mems {
         let gx_aln = align_seed_hit(index, &read, hit, &mut swg, band_width, x_drop as i32);
 
+        if !align_opts.intron_mode {
+            match gx_aln.aln_type {
+                AlnType::Exonic { .. } => (),
+                _ => continue,
+            }
+        }
+
         // use the running max alignment score to discard low scoring alignments early
         if gx_aln.gx_aln.score < align_opts.min_aln_score
             || gx_aln.gx_aln.score < min_aln_score
@@ -182,6 +189,11 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
 }
 
 /// Align a single seed hit and return a GenomeAlignment.
+///
+/// Tries to align to the genome and the transcriptome,
+/// returning the alignment that is better.
+/// Determines whether the alignment is exonic, intronic,
+/// or intergenic.
 pub fn align_seed_hit<F: MatchFunc>(
     index: &Index,
     read: &[u8],
@@ -425,4 +437,6 @@ pub struct AlignOpts {
     pub min_aln_score: i32,
     /// Range of alignment scores below the max score to output.
     pub multimap_score_range: usize,
+    /// Whether to output intronic and intergenic alignments.
+    pub intron_mode: bool,
 }

@@ -72,6 +72,7 @@ fn main() -> Result<()> {
                     min_aln_score_percent: align_opts.min_aln_score_percent,
                     min_aln_score: align_opts.min_aln_score,
                     multimap_score_range: align_opts.multimap_score_range,
+                    intron_mode: align_opts.intron_mode,
                 },
             )?;
         }
@@ -123,6 +124,9 @@ pub struct Align {
     /// Output in SAM or BAM format instead of PAF
     #[clap(short = 'a')]
     pub bam: bool,
+    /// Whether to output intronic or intergenic alignments
+    #[clap(long)]
+    pub intron_mode: bool,
 }
 
 #[derive(Debug, Clap)]
