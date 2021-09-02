@@ -79,33 +79,8 @@ def main():
                 > 0
             )
             metrics.n_reads_on_genes += 1
-
     print(f"file1: {args.in1}, file2: {args.in2}")
-    print(
-        f"file1 identical alignment to ref fraction: {round(metrics.n_in1_identical_align/metrics.n_reads,3)}"
-    )
-    print(
-        f"file2 identical alignment to ref fraction: {round(metrics.n_in2_identical_align/metrics.n_reads,3)}"
-    )
-    print(
-        f"file1 unaligned reads fraction: {round(metrics.n_in1_unaligned/metrics.n_reads,3)}"
-    )
-    print(
-        f"file2 unaligned reads fraction: {round(metrics.n_in2_unaligned/metrics.n_reads,3)}"
-    )
-    print(
-        f"file1 and file2 reads on same chr fraction: {round(metrics.n_same_chromosome_align/metrics.n_reads,3)}"
-    )
-
-    print(
-        f"file1 and file2 identical alignments fraction: {round(metrics.n_concordant_align/metrics.n_reads,3)}"
-    )
-    print(
-        f"file1 and file2 overlapping align fraction: {round(metrics.n_overlapping_align/metrics.n_reads,2)}"
-    )
-    print(
-        f"file1 and file2 reads on same gene fraction: {round(metrics.n_same_gene_align/metrics.n_reads_on_genes,3)}"
-    )
+    metrics_to_markdown(metrics)
 
 
 def get_alignment_reader(path: str) -> Iterable:
@@ -205,6 +180,24 @@ def compare_sam_to_paf(
         and (str(sam_alignment.mapping_quality) == paf_alignment.mapping_qual)
     )
     return comparison
+
+
+def metrics_to_markdown(metrics: dataclass):
+
+    print(
+        f"""
+|metric|fraction|
+|------|--------|
+|file1 identical alignment to ref | {round(metrics.n_in1_identical_align / metrics.n_reads, 3)}|
+|file2 identical alignment to ref | {round(metrics.n_in2_identical_align / metrics.n_reads, 3)}|
+|file1 unaligned reads |            {round(metrics.n_in1_unaligned / metrics.n_reads, 3)}|
+|file2 unaligned reads |            {round(metrics.n_in2_unaligned / metrics.n_reads, 3)}|
+|file1 and file2 reads on same chr |{round(metrics.n_same_chromosome_align / metrics.n_reads, 3)}|
+|file1 and file2 identical alignments |{round(metrics.n_concordant_align / metrics.n_reads, 3)}|
+|file1 and file2 overlapping align |{round(metrics.n_overlapping_align / metrics.n_reads, 2)}|
+|file1 and file2 reads on same gene |{round(metrics.n_same_gene_align / metrics.n_reads_on_genes, 3)}|
+    """
+    )
 
 
 @dataclass
