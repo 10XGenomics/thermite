@@ -5,7 +5,7 @@ file1 unaligned reads fraction: 0.0
 file2 unaligned reads fraction: 0.631
 file1 and file2 reads on same chr fraction: 0.369
 file1 and file2 identical alignments fraction: 0.0
-file1 and file2 overlapping align fraction: 0.351
+file1 and file2 overlapping align fraction: 0.35
 file1 and file2 reads on same gene fraction: 0.954
 file1: cellranger_pbmc10k_chrM_500k_reads.bam, file2: thermite_pbmc10k_chrM_500k_reads.bam
 file1 identical alignment to ref fraction: 0.984
@@ -14,5 +14,5 @@ file1 unaligned reads fraction: 0.0
 file2 unaligned reads fraction: 0.181
 file1 and file2 reads on same chr fraction: 0.819
 file1 and file2 identical alignments fraction: 0.0
-file1 and file2 overlapping align fraction: 0.819
+file1 and file2 overlapping align fraction: 0.82
 file1 and file2 reads on same gene fraction: 1.0
