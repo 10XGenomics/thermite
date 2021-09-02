@@ -76,8 +76,6 @@ $(aln).paf: $(ref).fasta.tai $(query)
 # Align the query to the reference (output sam).
 $(aln).sam: $(ref).fasta.tai $(query)
 	thermite align -a $(aln_flags) -o $@ $^
-	samtools sort -n $@ | samtools view -h > temp.sam
-	mv temp.sam $@
 
 # Align the query to the reference (output bam).
 $(aln).bam: $(ref).fasta.tai $(query)
