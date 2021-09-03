@@ -4,4 +4,4 @@ data/**.bam
 data/**.paf
 data/**.sam
 data/**.tai
-data/comparison_metrics.txt
+data/*_comparison_metrics.txt
