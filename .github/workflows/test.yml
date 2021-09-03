@@ -40,12 +40,16 @@ jobs:
         run: cargo check --all-targets
       - name: Run cargo build
         run: cargo build
+      - name: Run cargo test
+        run: cargo test
       - name: Install py requirements
         run: pip install pysam
       - name: Run metric test
         run: |
           cd data/
           make metrics dataset=chrM
+          make metrics dataset=chr21
+          cat chr21_comparison_metrics.txt chrM_comparison_metrics.txt > comparison_metrics.txt
       - uses: machine-learning-apps/pr-comment@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
