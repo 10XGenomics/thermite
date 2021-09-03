@@ -1,4 +1,4 @@
-//#![deny(warnings)]
+#![deny(warnings)]
 
 pub mod aligner;
 pub mod aln_writer;
