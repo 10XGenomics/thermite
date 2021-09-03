@@ -4,6 +4,7 @@ import pysam
 import argparse
 from collections.abc import Iterable
 from collections import namedtuple
+from dataclasses import dataclass
 
 # TODO: use data class instead of named tuple
 
@@ -25,97 +26,109 @@ PAF_TUPLE = namedtuple(
     ],
 )
 
-ALIGN_TUPLE = namedtuple(
-    "alignment",
-    [
-        "read_name",
-        "query_len",
-        "query_start",
-        "query_end",
-        "target_name",
-        "target_start",
-        "target_end",
-        "num_match_residue",
-    ],
-)
-
 
 def main():
     parser = argparse.ArgumentParser(
         description="Get alignment metrics. Assumes reads are in same order in paf file."
     )
-    parser.add_argument("in1", help="input sam/bam/paf file 1")
-    parser.add_argument("in2", help="input sam/bam/paf file 2")
+    parser.add_argument("in1", help="input sam/bam file 1")
+    parser.add_argument("in2", help="input sam/bam file 2")
     args = parser.parse_args()
 
     reader1, reader1_type = get_alignment_reader(args.in1)
     reader2, reader2_type = get_alignment_reader(args.in2)
+    metrics = Metrics()
 
-    n_reads = 0
-    n_in1_identical_align = 0
-    n_in2_identical_align = 0
-    n_concordant_align = 0
+    for row1, row2 in zip(
+        reader1,
+        reader2,
+    ):
+        metrics.n_reads += 1
+        # if reader1_type == "paf":
+        #     print("Not supporting PAF atm")
+        #     exit()
+        #     while row1[0].startswith("@"):
+        #         row1 = next(reader1)
+        # if reader2_type == "paf":
+        #     print("Not supporting PAF atm")
+        #     exit()
+        #     while row2[0].startswith("@"):
+        #         row2 = next(reader2)
+        while row1.is_secondary:
+            row1 = next(reader1)
+        while row2.is_secondary:
+            row2 = next(reader2)
 
-    for row1, row2 in zip(reader1, reader2):
-        n_reads += 1
-        if reader1_type == "paf":
-            while row1[0].startswith("@"):
-                row1 = next(reader1)
-        if reader2_type == "paf":
-            while row2[0].startswith("@"):
-                row2 = next(reader2)
+        if row1.query_name != row2.query_name:
+            print(f"query names not matching up:{row1.query_name}, {row2.query_name}")
+            exit()
 
-        if reader1_type == "paf" and reader2_type == "paf":
-            row1 = parse_paf_alignment(row1[0:12])
-            n_in1_identical_align += paf_query_identical_to_reference(row1)
-            row2 = parse_paf_alignment(row2[0:12])
-            n_in2_identical_align += paf_query_identical_to_reference(row2)
-            n_concordant_align += row1 == row2
-        elif reader1_type == "sam" and reader2_type == "sam":
-            n_in1_identical_align += sam_query_identical_to_reference(row1)
-            n_in2_identical_align += sam_query_identical_to_reference(row2)
-            n_concordant_align += row1 == row2  # will this work?
-        elif reader1_type == "sam" and reader2_type == "paf":
-            n_in1_identical_align += sam_query_identical_to_reference(row1)
-            row2 = parse_paf_alignment(row2[0:12])
-            n_in2_identical_align += paf_query_identical_to_reference(row2)
-            n_concordant_align += compare_sam_to_paf(row1, row2)
-        elif reader1_type == "paf" and reader2_type == "sam":
-            row1 = parse_paf_alignment(row1[0:12])
-            n_in1_identical_align += paf_query_identical_to_reference(row1)
-            n_in2_identical_align += sam_query_identical_to_reference(row2)
-            n_concordant_align += compare_sam_to_paf(row2, row1)
-
-    print(f"file1 identical alignment to ref fraction: {n_in1_identical_align/n_reads}")
-    print(f"file2 identical alignment to ref fraction: {n_in2_identical_align/n_reads}")
-    print(
-        f"file1 and file2 identical alignments fraction: {n_concordant_align/n_reads}"
-    )
+        metrics.n_in1_identical_align += sam_query_identical_to_reference(row1)
+        metrics.n_in2_identical_align += sam_query_identical_to_reference(row2)
+        metrics.n_in1_unaligned += row1.is_unmapped
+        metrics.n_in2_unaligned += row2.is_unmapped
+        metrics.n_same_chromosome_align += row1.reference_name == row2.reference_name
+        metrics.n_overlapping_align += queries_overlap(row1, row2)
+        metrics.n_identical_align += queries_identical(row1, row2)
+        if row1.has_tag("GX") and row2.has_tag("GX"):
+            metrics.n_same_gene_align += (
+                len(
+                    set(row1.get_tag("GX").split(";"))
+                    & set(row2.get_tag("GX").split(";"))
+                )
+                > 0
+            )
+            metrics.n_reads_on_genes += 1
+    print(f"file1: {args.in1}, file2: {args.in2}")
+    metrics_to_markdown(metrics)
 
 
 def get_alignment_reader(path: str) -> Iterable:
     _, ext = os.path.splitext(path)
     if ext == ".bam" or ext == ".sam":
-        samfile = pysam.AlignmentFile(path)
-        return (samfile.fetch(), "sam")
+        pysam.sort("-n", "-o", f"namesorted_{path}", path)
+        samfile = pysam.AlignmentFile(f"namesorted_{path}", "rb")
+        return (samfile.fetch(until_eof=True), "sam")
     elif ext == ".paf":
         return (csv.reader(open(path), delimiter="\t"), "paf")
 
 
 def paf_query_identical_to_reference(alignment: list) -> int:
-    if alignment.query_len == alignment.alignment_len:
-        return 1
-    else:
-        return 0
+    return alignment.query_len == alignment.alignment_len
 
 
 def sam_query_identical_to_reference(
     alignment: pysam.AlignedSegment,
 ) -> int:
-    if alignment.query_alignment_length == alignment.reference_length:
-        return 1
-    else:
-        return 0
+    return alignment.query_alignment_length == alignment.reference_length
+
+
+def queries_identical(
+    alignment1: pysam.AlignedSegment, alignment2: pysam.AlignedSegment
+) -> int:
+    return (
+        alignment1.reference_name == alignment2.reference_name
+        and alignment1.reference_start == alignment2.reference_start
+        and alignment1.reference_end == alignment2.reference_end
+        and alignment1.is_reverse == alignment2.is_reverse
+    )
+
+
+def queries_overlap(alignment1: pysam.AlignedSegment, alignment2: pysam.AlignedSegment):
+    return (
+        alignment1.reference_name == alignment2.reference_name
+        and alignment1.is_reverse == alignment2.is_reverse
+        and (
+            (
+                alignment1.reference_end > alignment2.reference_start
+                and alignment1.reference_start < alignment2.reference_end
+            )
+            or (
+                alignment1.reference_start < alignment2.reference_end
+                and alignment1.reference_end > alignment2.reference_start
+            )
+        )
+    )
 
 
 def parse_paf_alignment(alignment: list) -> namedtuple:
@@ -167,6 +180,39 @@ def compare_sam_to_paf(
         and (str(sam_alignment.mapping_quality) == paf_alignment.mapping_qual)
     )
     return comparison
+
+
+def metrics_to_markdown(metrics: dataclass):
+
+    print(
+        f"""
+|metric|fraction|
+|------|--------|
+|file1 identical alignment to ref | {round(metrics.n_in1_identical_align / metrics.n_reads, 3)}|
+|file2 identical alignment to ref | {round(metrics.n_in2_identical_align / metrics.n_reads, 3)}|
+|file1 unaligned reads |            {round(metrics.n_in1_unaligned / metrics.n_reads, 3)}|
+|file2 unaligned reads |            {round(metrics.n_in2_unaligned / metrics.n_reads, 3)}|
+|file1 and file2 reads on same chr |{round(metrics.n_same_chromosome_align / metrics.n_reads, 3)}|
+|file1 and file2 identical alignments |{round(metrics.n_concordant_align / metrics.n_reads, 3)}|
+|file1 and file2 overlapping align |{round(metrics.n_overlapping_align / metrics.n_reads, 2)}|
+|file1 and file2 reads on same gene |{round(metrics.n_same_gene_align / metrics.n_reads_on_genes, 3)}|
+    """
+    )
+
+
+@dataclass
+class Metrics:
+    n_reads: int = 0
+    n_reads_on_genes: int = 0
+    n_in1_identical_align: int = 0
+    n_in2_identical_align: int = 0
+    n_concordant_align: int = 0
+    n_in1_unaligned: int = 0
+    n_in2_unaligned: int = 0
+    n_overlapping_align: int = 0
+    n_same_gene_align: int = 0
+    n_same_chromosome_align: int = 0
+    n_identical_align: int = 0
 
 
 if __name__ == "__main__":

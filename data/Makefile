@@ -22,9 +22,19 @@ ifeq ($(dataset),test)
 else ifeq ($(dataset),chrM)
 	# Use the human mitochondrial genome data.
 	ref=GRCh38-2020-A-chrM
-	query=namesorted_PBMC_10k_500k_reads_chrM.fastq.gz
-	aln=thermite_PBMC_10k_500k_reads_chrM
-	compare=cellranger_namesorted_PBMC_10k_500k_reads_chrM.paf
+	chr=M
+	query=pbmc10k_chrM_500k_reads.fastq.gz
+	aln=thermite_pbmc10k_chrM_500k_reads
+	compare=cellranger_pbmc10k_chrM_500k_reads.bam
+	index_flags=
+	aln_flags=-k20 --min-total-hit-len=40
+else ifeq ($(dataset), chr21)
+	# Use chromosome 21 dataset.
+	ref=GRCh38-2020-A-chr21
+	chr=21
+	query=pbmc10k_chr21_500k_reads.fastq.gz
+	aln=thermite_pbmc10k_chr21_500k_reads
+	compare=cellranger_pbmc10k_chr21_500k_reads.bam
 	index_flags=
 	aln_flags=-k20 --intron-mode
 else
@@ -44,7 +54,7 @@ endif
 all: $(aln).paf $(aln).sam $(aln).bam
 
 # Alignment metrics.
-metrics: comparison_metrics.txt
+metrics: chr$(chr)_comparison_metrics.txt
 
 # Remove test output.
 clean:
@@ -72,5 +82,5 @@ $(aln).bam: $(ref).fasta.tai $(query)
 	thermite align -a $(aln_flags) -o $@ $^
 
 # Get STAR comparison metrics.
-comparison_metrics.txt: $(aln).paf $(compare)
+chr$(chr)_comparison_metrics.txt: $(aln).bam $(compare)
 	python3 ../lib/testing/alignment_metrics.py $(compare) $< > $@
