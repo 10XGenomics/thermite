@@ -196,8 +196,8 @@ pub fn aln_to_sam_record(
     let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
-        .set_sequence(str::from_utf8(query_seq)?.parse()?)
-        .set_quality_scores(str::from_utf8(query_qual)?.parse()?)
+        .set_sequence(format_maybe_empty(query_seq).parse()?)
+        .set_quality_scores(format_maybe_empty(query_qual).parse()?)
         .set_flags(flags)
         .set_data(data)
         .set_reference_sequence_name(aln.ref_name.parse()?)
@@ -220,8 +220,8 @@ pub fn unmapped_sam_record(
     let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
-        .set_sequence(str::from_utf8(query_seq)?.parse()?)
-        .set_quality_scores(str::from_utf8(query_qual)?.parse()?)
+        .set_sequence(format_maybe_empty(query_seq).parse()?)
+        .set_quality_scores(format_maybe_empty(query_qual).parse()?)
         .set_flags(sam::record::Flags::UNMAPPED)
         .build()?)
 }
@@ -312,5 +312,14 @@ fn format_read_name(r: &[u8]) -> &str {
     match r.iter().position(|&c| c == b' ') {
         Some(i) => str::from_utf8(&r[..i]).unwrap(),
         None => str::from_utf8(r).unwrap(),
+    }
+}
+
+/// Avoid empty strings.
+fn format_maybe_empty(s: &[u8]) -> &str {
+    if s.is_empty() {
+        "*"
+    } else {
+        str::from_utf8(s).unwrap()
     }
 }
