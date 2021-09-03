@@ -27,7 +27,7 @@ else ifeq ($(dataset),chrM)
 	aln=thermite_pbmc10k_chrM_500k_reads
 	compare=cellranger_pbmc10k_chrM_500k_reads.bam
 	index_flags=
-	aln_flags=-k20 --min-total-hit-len=40
+	aln_flags=-k20 --intron-mode
 else ifeq ($(dataset), chr21)
 	# Use chromosome 21 dataset.
 	ref=GRCh38-2020-A-chr21
