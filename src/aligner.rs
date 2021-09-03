@@ -103,9 +103,7 @@ pub fn align_reads_from_file(
                         };
                         let mut writer = sam::Writer::new(Vec::with_capacity(64));
                         writer.write_record(&record).unwrap();
-                        println!("{:?}", std::str::from_utf8(writer.get_ref()).unwrap());
-                        println!("{:?}", record);
-                        println!();
+                        panic!("{:?}\n{}", std::str::from_utf8(writer.get_ref()).unwrap(), record);
                         Record::from_sam(&header_view, writer.get_ref()).unwrap();
 
                         w.write_record(&record)?;
