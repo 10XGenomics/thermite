@@ -91,6 +91,23 @@ pub fn align_reads_from_file(
                             aln,
                             alns.len(),
                         )?;
+
+                        use rust_htslib::bam::{record::Record, HeaderView};
+                        use crate::aln_writer;
+                        let header_view = {
+                            let mut writer = sam::Writer::new(Vec::with_capacity(64));
+                            writer
+                                .write_header(&aln_writer::build_sam_header(index).unwrap())
+                                .unwrap();
+                            HeaderView::from_bytes(writer.get_ref())
+                        };
+                        let mut writer = sam::Writer::new(Vec::with_capacity(64));
+                        writer.write_record(&record).unwrap();
+                        println!("{:?}", std::str::from_utf8(writer.get_ref()).unwrap());
+                        println!("{:?}", record);
+                        println!();
+                        Record::from_sam(&header_view, writer.get_ref()).unwrap();
+
                         w.write_record(&record)?;
                     }
                     OutputWriter::Bam(ref mut w, ref header) => {
