@@ -62,6 +62,7 @@ impl ThermiteAligner {
         let alns = align_read(&self.index, read, &self.align_opts);
 
         if alns.is_empty() {
+            println!("{}\n{}\n{}\n", std::str::from_utf8(name).unwrap(), std::str::from_utf8(read).unwrap(), std::str::from_utf8(qual).unwrap());
             return vec![sam_noodles_to_htslib(
                 &aln_writer::unmapped_sam_record(name, read, qual).unwrap(),
                 &self.header_view,
