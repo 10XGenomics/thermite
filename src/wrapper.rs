@@ -109,5 +109,11 @@ fn sam_noodles_to_htslib(noodles_sam: &sam::Record, header_view: &HeaderView) ->
     writer.write_record(noodles_sam).unwrap();
     let s = writer.get_ref();
     // omit last newline
-    Record::from_sam(header_view, &s[..s.len() - 1]).unwrap()
+    let mut record = Record::from_sam(header_view, &s[..s.len() - 1]).unwrap();
+    // remove tags that may interfere with later steps
+    let _ = record.remove_aux(b"TX");
+    let _ = record.remove_aux(b"GX");
+    let _ = record.remove_aux(b"GN");
+    let _ = record.remove_aux(b"RE");
+    record
 }
