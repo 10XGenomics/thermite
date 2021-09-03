@@ -107,5 +107,7 @@ fn sam_noodles_to_htslib(noodles_sam: &sam::Record, header_view: &HeaderView) ->
     // TODO: directly create rust_htslib Record
     let mut writer = sam::Writer::new(Vec::with_capacity(64));
     writer.write_record(noodles_sam).unwrap();
+    println!("{}", noodles_sam);
+    println!("{:?}", std::str::from_utf8(writer.get_ref()));
     Record::from_sam(header_view, writer.get_ref()).unwrap()
 }
