@@ -140,6 +140,7 @@ impl Index {
                 let mut tx_seq = Vec::with_capacity(tx.len() as usize);
                 tx.get_sequence(&mut ref_fai_reader, &mut tx_seq)
                     .expect(&format!("Error in reading reference file {}", ref_path));
+                tx_seq.make_ascii_uppercase();
 
                 let strand = tx.strand == ReqStrand::Forward;
                 let tx_ref = &refs[name_to_ref[&NameStrand(tx.chrom.clone(), strand)]];

@@ -121,6 +121,7 @@ pub fn aln_to_sam_record(
     query_qual: &[u8],
     aln: &GenomeAlignment,
     multimap: usize,
+    hit_index: usize,
 ) -> Result<sam::Record> {
     use sam::record::{
         data::{
@@ -142,10 +143,22 @@ pub fn aln_to_sam_record(
     };
 
     let mapq = multimapq(multimap);
+    let num_mismatch = aln
+        .gx_aln
+        .operations
+        .iter()
+        .filter(|op| match op {
+            AlignmentOperation::Subst => true,
+            _ => false,
+        })
+        .count();
+
     let data = {
         let mut d = vec![
             Field::new(Tag::AlignmentScore, Value::Int(aln.gx_aln.score as i64)),
             Field::new(Tag::AlignmentHitCount, Value::Int(multimap as i64)),
+            Field::new(Tag::HitIndex, Value::Int(hit_index as i64)),
+            Field::new(Tag::Other("nM".to_owned()), Value::Int(num_mismatch as i64)),
         ];
         match aln.aln_type {
             AlnType::Exonic { tx_idx, ref tx_aln } => {

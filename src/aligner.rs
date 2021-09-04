@@ -80,7 +80,7 @@ pub fn align_reads_from_file(
                 continue;
             }
 
-            for aln in &alns {
+            for (i, aln) in alns.iter().enumerate() {
                 match writer {
                     OutputWriter::Sam(ref mut w) => {
                         let record = aln_to_sam_record(
@@ -90,6 +90,7 @@ pub fn align_reads_from_file(
                             &record.qual().unwrap(),
                             aln,
                             alns.len(),
+                            i + 1,
                         )?;
 
                         w.write_record(&record)?;
@@ -102,6 +103,7 @@ pub fn align_reads_from_file(
                             &record.qual().unwrap(),
                             aln,
                             alns.len(),
+                            i + 1,
                         )?;
                         w.write_sam_record(header.reference_sequences(), &record)?;
                     }
@@ -208,6 +210,7 @@ pub fn align_seed_hit<F: MatchFunc>(
     // extend seed hit in genome
     let gx_aln = {
         // region of the genome to align to
+        // TODO: use smaller region in genome
         let seq_start =
             (hit.ref_idx.saturating_sub(read.len() + band_width)).max(aln_ref.start_idx);
         let seq_end = (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
@@ -234,7 +237,8 @@ pub fn align_seed_hit<F: MatchFunc>(
         .find(Interval::new(hit.ref_idx..hit.ref_idx + hit.len).unwrap())
         .map(|e| *e.data());
     for tx_idx in tx_idxs_iter {
-        let tx_seed = lift_mem_to_tx(&hit, &index.txome().txs[tx_idx]);
+        let mut tx_seed = lift_mem_to_tx(&hit, &index.txome().txs[tx_idx]);
+        extend_seed_match(&index.txome().txs[tx_idx].seq, &mut tx_seed, read);
         let tx_aln = extend_left_right(
             &index.txome().txs[tx_idx].seq,
             &tx_seed,
@@ -401,6 +405,23 @@ pub fn extend_left_right<F: MatchFunc>(
         xlen: read.len(),
         operations: ops,
         mode: AlignmentMode::Custom,
+    }
+}
+
+/// Extend a seed hit left and right with exact matches.
+pub fn extend_seed_match(ref_seq: &[u8], hit: &mut Mem, read: &[u8]) {
+    while hit.ref_idx + hit.len < ref_seq.len()
+        && hit.query_idx + hit.len < read.len()
+        && ref_seq[hit.ref_idx + hit.len] == read[hit.query_idx + hit.len] {
+        hit.len += 1;
+    }
+
+    while hit.ref_idx > 0
+        && hit.query_idx > 0
+        && ref_seq[hit.ref_idx - 1] == read[hit.query_idx - 1] {
+        hit.ref_idx -= 1;
+        hit.query_idx -= 1;
+        hit.len += 1;
     }
 }
 

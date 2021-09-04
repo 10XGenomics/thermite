@@ -69,9 +69,10 @@ impl ThermiteAligner {
         }
 
         alns.iter()
-            .map(|aln| {
+            .enumerate()
+            .map(|(i, aln)| {
                 sam_noodles_to_htslib(
-                    &aln_writer::aln_to_sam_record(&self.index, name, read, qual, aln, alns.len())
+                    &aln_writer::aln_to_sam_record(&self.index, name, read, qual, aln, alns.len(), i + 1)
                         .unwrap(),
                     &self.header_view,
                 )
