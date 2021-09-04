@@ -29,7 +29,12 @@ impl<F: MatchFunc> SwgExtend<F> {
     /// at the highest scoring index.
     #[allow(non_snake_case)]
     pub fn extend(&mut self, x: &[u8], y: &[u8], band_width: usize, x_drop: i32) -> Alignment {
-        assert!(band_width <= self.max_band_width);
+        assert!(
+            band_width <= self.max_band_width,
+            "Band width of {} must be less than the max band width of {}!",
+            band_width,
+            self.max_band_width
+        );
 
         if x.len() == 0 || y.len() == 0 {
             return Alignment {

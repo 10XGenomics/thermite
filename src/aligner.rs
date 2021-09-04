@@ -412,13 +412,15 @@ pub fn extend_left_right<F: MatchFunc>(
 pub fn extend_seed_match(ref_seq: &[u8], hit: &mut Mem, read: &[u8]) {
     while hit.ref_idx + hit.len < ref_seq.len()
         && hit.query_idx + hit.len < read.len()
-        && ref_seq[hit.ref_idx + hit.len] == read[hit.query_idx + hit.len] {
+        && ref_seq[hit.ref_idx + hit.len] == read[hit.query_idx + hit.len]
+    {
         hit.len += 1;
     }
 
     while hit.ref_idx > 0
         && hit.query_idx > 0
-        && ref_seq[hit.ref_idx - 1] == read[hit.query_idx - 1] {
+        && ref_seq[hit.ref_idx - 1] == read[hit.query_idx - 1]
+    {
         hit.ref_idx -= 1;
         hit.query_idx -= 1;
         hit.len += 1;

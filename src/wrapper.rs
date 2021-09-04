@@ -1,3 +1,5 @@
+use anyhow::Result;
+
 use rust_htslib::bam::{record::Record, HeaderView};
 
 use noodles::sam;
@@ -7,6 +9,7 @@ use bincode::deserialize_from;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
+use std::str;
 use std::sync::Arc;
 
 use crate::aligner::*;
@@ -59,23 +62,40 @@ impl ThermiteAligner {
 
     /// Align a single read and return a rust_htslib Record
     pub fn align_read(&self, name: &[u8], read: &[u8], qual: &[u8]) -> Vec<Record> {
+        let err_msg = format!(
+            "Failed to create SAM record for read:\n{}\n{}\n{}",
+            str::from_utf8(name).unwrap(),
+            str::from_utf8(read).unwrap(),
+            str::from_utf8(qual).unwrap()
+        );
+
         let alns = align_read(&self.index, read, &self.align_opts);
 
         if alns.is_empty() {
             return vec![sam_noodles_to_htslib(
-                &aln_writer::unmapped_sam_record(name, read, qual).unwrap(),
+                &aln_writer::unmapped_sam_record(name, read, qual).expect(&err_msg),
                 &self.header_view,
-            )];
+            )
+            .expect(&err_msg)];
         }
 
         alns.iter()
             .enumerate()
             .map(|(i, aln)| {
                 sam_noodles_to_htslib(
-                    &aln_writer::aln_to_sam_record(&self.index, name, read, qual, aln, alns.len(), i + 1)
-                        .unwrap(),
+                    &aln_writer::aln_to_sam_record(
+                        &self.index,
+                        name,
+                        read,
+                        qual,
+                        aln,
+                        alns.len(),
+                        i + 1,
+                    )
+                    .expect(&err_msg),
                     &self.header_view,
                 )
+                .expect(&err_msg)
             })
             .collect::<Vec<_>>()
     }
@@ -104,17 +124,18 @@ impl ThermiteAligner {
 }
 
 /// Convert a Noodles SAM record to a rust_htslib Record.
-fn sam_noodles_to_htslib(noodles_sam: &sam::Record, header_view: &HeaderView) -> Record {
+fn sam_noodles_to_htslib(noodles_sam: &sam::Record, header_view: &HeaderView) -> Result<Record> {
     // TODO: directly create rust_htslib Record
     let mut writer = sam::Writer::new(Vec::with_capacity(64));
     writer.write_record(noodles_sam).unwrap();
     let s = writer.get_ref();
     // omit last newline
-    let mut record = Record::from_sam(header_view, &s[..s.len() - 1]).unwrap();
+    let mut record = Record::from_sam(header_view, &s[..s.len() - 1])?;
     // remove tags that may interfere with later steps
+    // ignore errors from missing tags
     let _ = record.remove_aux(b"TX");
     let _ = record.remove_aux(b"GX");
     let _ = record.remove_aux(b"GN");
     let _ = record.remove_aux(b"RE");
-    record
+    Ok(record)
 }

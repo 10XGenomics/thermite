@@ -133,13 +133,14 @@ impl Index {
 
         let mut gene_intervals = vec![(sa.bwt().len(), 0); genes.len()];
         let mut exon_to_tx = IntervalTree::new();
+        let err_msg = format!("Error in reading reference file {}", ref_path);
         let txs = txome_txs
             .into_iter()
             .map(|tx| {
                 let gene_idx = tx.gene_idx.0 as usize;
                 let mut tx_seq = Vec::with_capacity(tx.len() as usize);
                 tx.get_sequence(&mut ref_fai_reader, &mut tx_seq)
-                    .expect(&format!("Error in reading reference file {}", ref_path));
+                    .expect(&err_msg);
                 tx_seq.make_ascii_uppercase();
 
                 let strand = tx.strand == ReqStrand::Forward;
