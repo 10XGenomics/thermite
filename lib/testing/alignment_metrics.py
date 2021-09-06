@@ -33,6 +33,7 @@ def main():
     )
     parser.add_argument("in1", help="input sam/bam file 1")
     parser.add_argument("in2", help="input sam/bam file 2")
+    parser.add_argument("-r", "--ref", help="reference fasta file")
     parser.add_argument(
         "-p",
         "--print",
@@ -45,6 +46,7 @@ def main():
     when_print = set(args.print) if args.print else set()
     reader1, reader1_type = get_alignment_reader(args.in1)
     reader2, reader2_type = get_alignment_reader(args.in2)
+    ref_file = pysam.FastaFile(args.ref) if args.ref else None
     metrics = Metrics()
 
     for row1, row2 in zip(
@@ -107,12 +109,29 @@ def main():
                 print_aln = True
 
         if print_aln:
+            if ref_file:
+                s = ref_file.fetch(
+                    row1.reference_name, row1.reference_start, row1.reference_end
+                )
+                print("ref:", s)
+
             print(row1.tostring(reader1))
+
+            if ref_file:
+                s = ref_file.fetch(
+                    row2.reference_name, row2.reference_start, row2.reference_end
+                )
+                print("ref:", s)
+
             print(row2.tostring(reader2))
             print()
 
     print(f"file1: {args.in1}, file2: {args.in2}")
     metrics_to_markdown(metrics)
+
+
+def revcomp(s):
+    return s.translate(str.maketrans("ACGNTacgnt", "TGCNAtgcna"))[::-1]
 
 
 def get_alignment_reader(path: str) -> Iterable:
