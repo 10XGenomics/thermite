@@ -27,7 +27,7 @@ else ifeq ($(dataset),chrM)
 	aln=thermite_pbmc10k_chrM_500k_reads
 	compare=cellranger_pbmc10k_chrM_500k_reads.bam
 	index_flags=
-	aln_flags=-k20 --intron-mode
+	aln_flags=-k20 -s0 --intron-mode
 else ifeq ($(dataset), chr21)
 	# Use chromosome 21 dataset.
 	ref=GRCh38-2020-A-chr21
@@ -36,7 +36,7 @@ else ifeq ($(dataset), chr21)
 	aln=thermite_pbmc10k_chr21_500k_reads
 	compare=cellranger_pbmc10k_chr21_500k_reads.bam
 	index_flags=
-	aln_flags=-k20 --intron-mode
+	aln_flags=-k20 -s0 --intron-mode
 else
 	$(error The dataset name $(dataset) is invalid!)
 endif
@@ -54,13 +54,13 @@ endif
 all: $(aln).paf $(aln).sam $(aln).bam
 
 # Alignment metrics.
-metrics: chr$(chr)_comparison_metrics.txt
+metrics: $(dataset)_comparison_metrics.txt
 
 # Remove test output.
 clean:
 	rm -f $(ref).fasta.tai
 	rm -f $(aln).paf $(aln).sam $(aln).bam
-	rm -f chr$(chr)_comparison_metrics.txt
+	rm -f $(dataset)_comparison_metrics.txt
 
 .DELETE_ON_ERROR:
 .SECONDARY:
@@ -82,5 +82,5 @@ $(aln).bam: $(ref).fasta.tai $(query)
 	thermite align -a $(aln_flags) -o $@ $^
 
 # Get STAR comparison metrics.
-chr$(chr)_comparison_metrics.txt: $(aln).bam $(compare)
+$(dataset)_comparison_metrics.txt: $(aln).bam $(compare)
 	python3 ../lib/testing/alignment_metrics.py $(compare) $< > $@

@@ -37,7 +37,7 @@ def main():
         "-p",
         "--print",
         nargs="+",
-        choices=["all", "identical", "overlap", "gene"],
+        choices=["all", "identical", "overlap", "gene", "unmapped"],
         help="when should mismatching alignments be printed",
     )
     args = parser.parse_args()
@@ -78,6 +78,8 @@ def main():
 
         metrics.n_in1_unaligned += row1.is_unmapped
         metrics.n_in2_unaligned += row2.is_unmapped
+        if "unmapped" in when_print and row1.is_unmapped != row2.is_unmapped:
+            print_aln = True
 
         metrics.n_same_chromosome_align += row1.reference_name == row2.reference_name
 

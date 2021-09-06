@@ -3,6 +3,7 @@ use anyhow::Result;
 use noodles::{bam, sam};
 
 use bio::alignment::AlignmentOperation;
+use bio::alphabets::dna;
 
 use std::convert::TryFrom;
 use std::io::Write;
@@ -131,6 +132,19 @@ pub fn aln_to_sam_record(
         Data, Flags,
     };
 
+    let query_seq = if aln.strand {
+        query_seq.to_owned()
+    } else {
+        dna::revcomp(query_seq)
+    };
+    let query_qual = {
+        let mut q = query_qual.to_owned();
+        if !aln.strand {
+            q.reverse();
+        }
+        q
+    };
+
     let flags = {
         let mut f = Flags::empty();
         if !aln.strand {
@@ -168,9 +182,9 @@ pub fn aln_to_sam_record(
                     "{},{}{},{}",
                     tx.id,
                     if tx.strand { '+' } else { '-' },
-                    // 1-based position
-                    tx_aln.ystart + 1,
-                    tx_aln.cigar(false)
+                    // 0-based position
+                    tx_aln.ystart,
+                    to_noodles_cigar(&tx_aln.operations)
                 );
 
                 d.push(Field::new(
@@ -209,8 +223,8 @@ pub fn aln_to_sam_record(
     let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
-        .set_sequence(format_maybe_empty(query_seq).parse()?)
-        .set_quality_scores(format_maybe_empty(query_qual).parse()?)
+        .set_sequence(format_maybe_empty(&query_seq).parse()?)
+        .set_quality_scores(format_maybe_empty(&query_qual).parse()?)
         .set_flags(flags)
         .set_data(data)
         .set_reference_sequence_name(aln.ref_name.parse()?)
@@ -220,7 +234,6 @@ pub fn aln_to_sam_record(
         )?)
         .set_mapping_quality(sam::record::MappingQuality::from(mapq))
         .set_cigar(to_noodles_cigar(&aln.gx_aln.operations))
-        .set_template_length((aln.gx_aln.yend - aln.gx_aln.ystart) as i32)
         .build()?)
 }
 
@@ -271,8 +284,9 @@ fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
 
     fn match_op(op: AlignmentOperation, len: usize) -> Op {
         match op {
-            AlignmentOperation::Match => Op::new(Kind::SeqMatch, len as u32),
-            AlignmentOperation::Subst => Op::new(Kind::SeqMismatch, len as u32),
+            // output 'M' for both match and mismatch
+            AlignmentOperation::Match => Op::new(Kind::Match, len as u32),
+            AlignmentOperation::Subst => Op::new(Kind::Match, len as u32),
             AlignmentOperation::Del => Op::new(Kind::Deletion, len as u32),
             AlignmentOperation::Ins => Op::new(Kind::Insertion, len as u32),
             AlignmentOperation::Xclip(l) => Op::new(Kind::SoftClip, l as u32),
@@ -286,6 +300,12 @@ fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
     let mut prev_len = 0;
 
     for &op in ops {
+        // output 'M' for both match and mismatch
+        let op = match op {
+            AlignmentOperation::Subst => AlignmentOperation::Match,
+            o => o,
+        };
+
         if prev.is_none() || prev.unwrap() != op {
             if let Some(p) = prev {
                 v.push(match_op(p, prev_len));
