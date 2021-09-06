@@ -60,7 +60,7 @@ metrics: chr$(chr)_comparison_metrics.txt
 clean:
 	rm -f $(ref).fasta.tai
 	rm -f $(aln).paf $(aln).sam $(aln).bam
-	rm -f comparison_metrics.txt
+	rm -f chr$(chr)_comparison_metrics.txt
 
 .DELETE_ON_ERROR:
 .SECONDARY:

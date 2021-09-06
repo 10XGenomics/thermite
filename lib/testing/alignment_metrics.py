@@ -29,12 +29,20 @@ PAF_TUPLE = namedtuple(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Get alignment metrics. Assumes reads are in same order in paf file."
+        description="Get alignment metrics. Assumes reads are in same order in sam/bam file."
     )
     parser.add_argument("in1", help="input sam/bam file 1")
     parser.add_argument("in2", help="input sam/bam file 2")
+    parser.add_argument(
+        "-p",
+        "--print",
+        nargs="+",
+        choices=["all", "identical", "overlap", "gene"],
+        help="when should mismatching alignments be printed",
+    )
     args = parser.parse_args()
 
+    when_print = set(args.print) if args.print else set()
     reader1, reader1_type = get_alignment_reader(args.in1)
     reader2, reader2_type = get_alignment_reader(args.in2)
     metrics = Metrics()
@@ -43,6 +51,8 @@ def main():
         reader1,
         reader2,
     ):
+        print_aln = "all" in when_print
+
         metrics.n_reads += 1
         # if reader1_type == "paf":
         #     print("Not supporting PAF atm")
@@ -65,20 +75,40 @@ def main():
 
         metrics.n_in1_identical_align += sam_query_identical_to_reference(row1)
         metrics.n_in2_identical_align += sam_query_identical_to_reference(row2)
+
         metrics.n_in1_unaligned += row1.is_unmapped
         metrics.n_in2_unaligned += row2.is_unmapped
+
         metrics.n_same_chromosome_align += row1.reference_name == row2.reference_name
-        metrics.n_overlapping_align += queries_overlap(row1, row2)
-        metrics.n_identical_align += queries_identical(row1, row2)
+
+        aln_overlap = queries_overlap(row1, row2)
+        metrics.n_overlapping_align += aln_overlap
+        if "overlap" in when_print and not aln_overlap:
+            print_aln = True
+
+        aln_identical = queries_identical(row1, row2)
+        metrics.n_identical_align += aln_identical
+        if "identical" in when_print and not aln_identical:
+            print_aln = True
+
         if row1.has_tag("GX") and row2.has_tag("GX"):
-            metrics.n_same_gene_align += (
+            same_gene = (
                 len(
                     set(row1.get_tag("GX").split(";"))
                     & set(row2.get_tag("GX").split(";"))
                 )
                 > 0
             )
+            metrics.n_same_gene_align += same_gene
             metrics.n_reads_on_genes += 1
+            if "gene" in when_print and not same_gene:
+                print_aln = True
+
+        if print_aln:
+            print(row1.tostring(reader1))
+            print(row2.tostring(reader2))
+            print()
+
     print(f"file1: {args.in1}, file2: {args.in2}")
     metrics_to_markdown(metrics)
 
