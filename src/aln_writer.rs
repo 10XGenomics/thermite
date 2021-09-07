@@ -181,7 +181,7 @@ pub fn aln_to_sam_record(
                 let tx_val = format!(
                     "{},{}{},{}",
                     tx.id,
-                    if tx.strand { '+' } else { '-' },
+                    '+',
                     // 0-based position
                     tx_aln.ystart,
                     to_noodles_cigar(&tx_aln.operations)

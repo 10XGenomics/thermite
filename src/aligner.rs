@@ -180,11 +180,9 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
 
     let mut gx_alns = filter_overlapping(gx_alns);
 
+    gx_alns.sort_by_key(|aln| -aln.gx_aln.score);
     // pick an arbitrary max scoring alignment as the primary alignment
-    if let Some(gx_aln) = gx_alns
-        .iter_mut()
-        .find(|gx_aln| gx_aln.gx_aln.score == max_aln_score)
-    {
+    if let Some(gx_aln) = gx_alns.first_mut() {
         gx_aln.primary = true;
     }
 
