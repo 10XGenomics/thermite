@@ -3,13 +3,14 @@ use anyhow::Result;
 use noodles::{bam, sam};
 
 use bio::alignment::AlignmentOperation;
+use bio::alphabets::dna;
 
 use std::convert::TryFrom;
 use std::io::Write;
 use std::{fmt, str};
 
 use crate::index::Index;
-use crate::txome::GenomeAlignment;
+use crate::txome::{AlnType, GenomeAlignment};
 
 /// Supported alignment output formats.
 #[derive(Copy, Clone, PartialEq)]
@@ -121,6 +122,7 @@ pub fn aln_to_sam_record(
     query_qual: &[u8],
     aln: &GenomeAlignment,
     multimap: usize,
+    hit_index: usize,
 ) -> Result<sam::Record> {
     use sam::record::{
         data::{
@@ -128,6 +130,19 @@ pub fn aln_to_sam_record(
             Field,
         },
         Data, Flags,
+    };
+
+    let query_seq = if aln.strand {
+        query_seq.to_owned()
+    } else {
+        dna::revcomp(query_seq)
+    };
+    let query_qual = {
+        let mut q = query_qual.to_owned();
+        if !aln.strand {
+            q.reverse();
+        }
+        q
     };
 
     let flags = {
@@ -140,38 +155,76 @@ pub fn aln_to_sam_record(
         }
         f
     };
+
     let mapq = multimapq(multimap);
+    let num_mismatch = aln
+        .gx_aln
+        .operations
+        .iter()
+        .filter(|op| match op {
+            AlignmentOperation::Subst => true,
+            _ => false,
+        })
+        .count();
+
     let data = {
-        let tx = &index.txome().txs[aln.tx_idx];
-        let gene = &index.txome().genes[tx.gene_idx];
-        let tx_val = format!(
-            "{},{}{},{}",
-            tx.id,
-            if tx.strand { '+' } else { '-' },
-            // 1-based position
-            aln.tx_aln.ystart + 1,
-            aln.tx_aln.cigar(false)
-        );
-        Data::try_from(vec![
+        let mut d = vec![
             Field::new(Tag::AlignmentScore, Value::Int(aln.gx_aln.score as i64)),
             Field::new(Tag::AlignmentHitCount, Value::Int(multimap as i64)),
-            Field::new(Tag::Other("TX".to_owned()), Value::String(tx_val)),
-            Field::new(
-                Tag::Other("GX".to_owned()),
-                Value::String(gene.id.to_owned()),
-            ),
-            Field::new(
-                Tag::Other("GN".to_owned()),
-                Value::String(gene.name.to_owned()),
-            ),
-            Field::new(Tag::Other("RE".to_owned()), Value::Char('E')),
-        ])?
+            Field::new(Tag::HitIndex, Value::Int(hit_index as i64)),
+            Field::new(Tag::Other("nM".to_owned()), Value::Int(num_mismatch as i64)),
+        ];
+        match aln.aln_type {
+            AlnType::Exonic { tx_idx, ref tx_aln } => {
+                let tx = &index.txome().txs[tx_idx];
+                let gene = &index.txome().genes[tx.gene_idx];
+                let tx_val = format!(
+                    "{},{}{},{}",
+                    tx.id,
+                    '+',
+                    // 0-based position
+                    tx_aln.ystart,
+                    to_noodles_cigar(&tx_aln.operations)
+                );
+
+                d.push(Field::new(
+                    Tag::Other("TX".to_owned()),
+                    Value::String(tx_val),
+                ));
+                d.push(Field::new(
+                    Tag::Other("GX".to_owned()),
+                    Value::String(gene.id.to_owned()),
+                ));
+                d.push(Field::new(
+                    Tag::Other("GN".to_owned()),
+                    Value::String(gene.name.to_owned()),
+                ));
+                d.push(Field::new(Tag::Other("RE".to_owned()), Value::Char('E')));
+            }
+            AlnType::Intronic { gene_idx } => {
+                let gene = &index.txome().genes[gene_idx];
+                d.push(Field::new(
+                    Tag::Other("GX".to_owned()),
+                    Value::String(gene.id.to_owned()),
+                ));
+                d.push(Field::new(
+                    Tag::Other("GN".to_owned()),
+                    Value::String(gene.name.to_owned()),
+                ));
+                d.push(Field::new(Tag::Other("RE".to_owned()), Value::Char('N')));
+            }
+            AlnType::Intergenic => {
+                d.push(Field::new(Tag::Other("RE".to_owned()), Value::Char('I')));
+            }
+        }
+        Data::try_from(d)?
     };
+
     let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
-        .set_sequence(str::from_utf8(query_seq)?.parse()?)
-        .set_quality_scores(str::from_utf8(query_qual)?.parse()?)
+        .set_sequence(format_maybe_empty(&query_seq).parse()?)
+        .set_quality_scores(format_maybe_empty(&query_qual).parse()?)
         .set_flags(flags)
         .set_data(data)
         .set_reference_sequence_name(aln.ref_name.parse()?)
@@ -181,7 +234,6 @@ pub fn aln_to_sam_record(
         )?)
         .set_mapping_quality(sam::record::MappingQuality::from(mapq))
         .set_cigar(to_noodles_cigar(&aln.gx_aln.operations))
-        .set_template_length((aln.gx_aln.yend - aln.gx_aln.ystart) as i32)
         .build()?)
 }
 
@@ -194,8 +246,8 @@ pub fn unmapped_sam_record(
     let read_name = format_read_name(query_name);
     Ok(sam::Record::builder()
         .set_read_name(read_name.parse()?)
-        .set_sequence(str::from_utf8(query_seq)?.parse()?)
-        .set_quality_scores(str::from_utf8(query_qual)?.parse()?)
+        .set_sequence(format_maybe_empty(query_seq).parse()?)
+        .set_quality_scores(format_maybe_empty(query_qual).parse()?)
         .set_flags(sam::record::Flags::UNMAPPED)
         .build()?)
 }
@@ -232,8 +284,9 @@ fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
 
     fn match_op(op: AlignmentOperation, len: usize) -> Op {
         match op {
-            AlignmentOperation::Match => Op::new(Kind::SeqMatch, len as u32),
-            AlignmentOperation::Subst => Op::new(Kind::SeqMismatch, len as u32),
+            // output 'M' for both match and mismatch
+            AlignmentOperation::Match => Op::new(Kind::Match, len as u32),
+            AlignmentOperation::Subst => Op::new(Kind::Match, len as u32),
             AlignmentOperation::Del => Op::new(Kind::Deletion, len as u32),
             AlignmentOperation::Ins => Op::new(Kind::Insertion, len as u32),
             AlignmentOperation::Xclip(l) => Op::new(Kind::SoftClip, l as u32),
@@ -247,6 +300,12 @@ fn to_noodles_cigar(ops: &[AlignmentOperation]) -> sam::record::Cigar {
     let mut prev_len = 0;
 
     for &op in ops {
+        // output 'M' for both match and mismatch
+        let op = match op {
+            AlignmentOperation::Subst => AlignmentOperation::Match,
+            o => o,
+        };
+
         if prev.is_none() || prev.unwrap() != op {
             if let Some(p) = prev {
                 v.push(match_op(p, prev_len));
@@ -286,5 +345,14 @@ fn format_read_name(r: &[u8]) -> &str {
     match r.iter().position(|&c| c == b' ') {
         Some(i) => str::from_utf8(&r[..i]).unwrap(),
         None => str::from_utf8(r).unwrap(),
+    }
+}
+
+/// Avoid empty strings.
+fn format_maybe_empty(s: &[u8]) -> &str {
+    if s.is_empty() {
+        "*"
+    } else {
+        str::from_utf8(s).unwrap()
     }
 }

@@ -4,24 +4,21 @@ use needletail::*;
 
 use noodles::{bam, sam};
 
-use bio::alignment::pairwise::{banded::Aligner, Scoring};
-use bio::alignment::sparse::{hash_kmers, HashMapFx};
-use bio::alignment::{Alignment, AlignmentOperation};
+use bio::alignment::pairwise::{MatchFunc, Scoring};
+use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
+use bio::utils::Interval;
 
 use std::cmp;
-use std::collections::{hash_map::Entry, HashMap};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
 
 use crate::aln_writer::*;
 use crate::index::*;
+use crate::swg::*;
 use crate::txome::*;
 
-/// Kmers of a transcript sequence.
-type Kmers<'a> = HashMapFx<&'a [u8], Vec<u32>>;
-
-/// Align reads from a fastq file and output the alignments in paf, sam, or bam format.
+/// Align reads from fastq files and output the alignments in paf, sam, or bam format.
 pub fn align_reads_from_file(
     index: &Index,
     query_paths: &[String],
@@ -51,14 +48,12 @@ pub fn align_reads_from_file(
         OutputFormat::Paf => OutputWriter::Paf(output_writer),
     };
 
-    let mut tx_kmer_cache = vec![None; index.txome().txs.len()];
-
     for query_path in query_paths {
         let mut reader = parse_fastx_file(query_path)?;
 
         while let Some(record) = reader.next() {
             let record = record?;
-            let alns = align_read(index, &mut tx_kmer_cache, &record.seq(), align_opts);
+            let alns = align_read(index, &record.seq(), align_opts);
 
             if alns.is_empty() {
                 // unmapped read
@@ -85,7 +80,7 @@ pub fn align_reads_from_file(
                 continue;
             }
 
-            for aln in &alns {
+            for (i, aln) in alns.iter().enumerate() {
                 match writer {
                     OutputWriter::Sam(ref mut w) => {
                         let record = aln_to_sam_record(
@@ -95,7 +90,9 @@ pub fn align_reads_from_file(
                             &record.qual().unwrap(),
                             aln,
                             alns.len(),
+                            i + 1,
                         )?;
+
                         w.write_record(&record)?;
                     }
                     OutputWriter::Bam(ref mut w, ref header) => {
@@ -106,6 +103,7 @@ pub fn align_reads_from_file(
                             &record.qual().unwrap(),
                             aln,
                             alns.len(),
+                            i + 1,
                         )?;
                         w.write_sam_record(header.reference_sequences(), &record)?;
                     }
@@ -121,77 +119,43 @@ pub fn align_reads_from_file(
     Ok(())
 }
 
-/// Attempt to align a single read and return the alignment if it is found.
-pub fn align_read<'a>(
-    index: &'a Index,
-    tx_kmer_cache: &mut [Option<Kmers<'a>>],
-    read: &[u8],
-    align_opts: &AlignOpts,
-) -> Vec<GenomeAlignment> {
+/// Attempt to align a single read and return the alignments that are found.
+pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<GenomeAlignment> {
     // always make sure reads are uppercase
     let read = read.to_ascii_uppercase();
 
-    let tx_hits_map = index.intersect_transcripts(&read, align_opts.min_seed_len);
-    let mut tx_hits = tx_hits_map.values().collect::<Vec<_>>();
-    tx_hits.sort_unstable_by_key(|k| k.total_len);
+    let mems = index.all_smems(&read, align_opts.min_seed_len);
 
-    let mut gx_alns = Vec::with_capacity(8);
-    let min_aln_score = (align_opts.min_aln_score_percent * (read.len() as f32)) as i32;
+    let mut gx_alns = Vec::with_capacity(4);
+    let min_aln_score = cmp::max(
+        (align_opts.min_aln_score_percent * (read.len() as f32)) as i32,
+        align_opts.min_aln_score,
+    );
     let mut max_aln_score = min_aln_score;
     // saturating sub just in case floating point error
+    // assumes unit scores
     let mut band_width = read.len().saturating_sub(min_aln_score as usize);
-    let mut coord_score: HashMap<(String, bool, usize), i32> = HashMap::with_capacity(8);
+    let mut x_drop = read.len().saturating_sub(min_aln_score as usize);
 
-    // longest to shortest total seed hit length
-    for tx_hit in tx_hits.into_iter().rev() {
-        if tx_hit.total_len < align_opts.min_total_hit_len {
-            break;
+    let scoring = Scoring::from_scores(-1, -1, 1, -1);
+    let mut swg = SwgExtend::new(band_width, scoring);
+
+    for hit in &mems {
+        let gx_aln = align_seed_hit(index, &read, hit, &mut swg, band_width, x_drop as i32);
+
+        if !align_opts.intron_mode {
+            match gx_aln.aln_type {
+                AlnType::Exonic { .. } => (),
+                _ => continue,
+            }
         }
-
-        let tx = &index.txome().txs[tx_hit.tx_idx];
-        if tx_kmer_cache[tx_hit.tx_idx].is_none() {
-            tx_kmer_cache[tx_hit.tx_idx] = Some(hash_kmers(&tx.seq, align_opts.min_seed_len));
-        }
-
-        let tx_aln = {
-            // TODO: reuse aligner, just change bandwidth
-            // align locally in the transcriptome and allow suffix of the read to be clipped
-            // note that the tx sequence can be forwards or revcomp
-            let scoring = Scoring::from_scores(-1, -1, 1, -1).yclip(0).xclip_suffix(0);
-            let mut aligner = Aligner::with_scoring(scoring, align_opts.min_seed_len, band_width);
-            let mut aln = aligner.custom_with_prehash(
-                &read,
-                &tx.seq,
-                tx_kmer_cache[tx_hit.tx_idx].as_ref().unwrap(),
-            );
-            aln.operations.retain(|op| match op {
-                AlignmentOperation::Yclip(_) => false,
-                _ => true,
-            });
-            aln
-        };
 
         // use the running max alignment score to discard low scoring alignments early
-        if tx_aln.score < min_aln_score
-            || tx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
+        if gx_aln.gx_aln.score < align_opts.min_aln_score
+            || gx_aln.gx_aln.score < min_aln_score
+            || gx_aln.gx_aln.score < max_aln_score - (align_opts.multimap_score_range as i32)
         {
             continue;
-        }
-
-        let gx_aln = tx_to_gx_aln(index, tx_aln, tx_hit.tx_idx);
-
-        // ensure that only the max scoring alignment is kept when there are duplicates
-        match coord_score.entry((gx_aln.ref_name.clone(), gx_aln.strand, gx_aln.gx_aln.ystart)) {
-            Entry::Occupied(mut o) => {
-                if gx_aln.gx_aln.score > *o.get() {
-                    o.insert(gx_aln.gx_aln.score);
-                } else {
-                    continue;
-                }
-            }
-            Entry::Vacant(v) => {
-                v.insert(gx_aln.gx_aln.score);
-            }
         }
 
         // narrow band when better alignments are found
@@ -200,80 +164,477 @@ pub fn align_read<'a>(
             (read.len() + align_opts.multimap_score_range)
                 .saturating_sub(gx_aln.gx_aln.score as usize),
         );
+        x_drop = cmp::min(
+            x_drop,
+            (read.len() + align_opts.multimap_score_range)
+                .saturating_sub(gx_aln.gx_aln.score as usize),
+        );
         max_aln_score = cmp::max(max_aln_score, gx_aln.gx_aln.score);
+
         gx_alns.push(gx_aln);
     }
 
     gx_alns.retain(|gx_aln| {
         gx_aln.gx_aln.score >= max_aln_score - (align_opts.multimap_score_range as i32)
     });
+
+    let mut gx_alns = filter_overlapping(gx_alns);
+
+    gx_alns.sort_by_key(|aln| -aln.gx_aln.score);
     // pick an arbitrary max scoring alignment as the primary alignment
-    if let Some(gx_aln) = gx_alns
-        .iter_mut()
-        .find(|gx_aln| gx_aln.gx_aln.score == max_aln_score)
-    {
+    if let Some(gx_aln) = gx_alns.first_mut() {
         gx_aln.primary = true;
     }
+
     gx_alns
 }
 
-/// Lift a transcriptome alignment to a genome alignment within a specific chromosome.
-fn tx_to_gx_aln(index: &Index, tx_aln: Alignment, tx_idx: usize) -> GenomeAlignment {
-    // lift to concatenated reference coordinates
-    // tx alignment could be either forwards or reversed
-    let lifted_aln = lift_tx_to_gx(&tx_aln, &index.txome().txs[tx_idx]);
-    // convert concatenated genome coordinates to coordinates within some chromosome
-    // make sure gx alignment is always relative to forwards strand
-    lifted_aln_to_gx_aln(index, lifted_aln, tx_idx, tx_aln)
+/// Align a single seed hit and return a GenomeAlignment.
+///
+/// Tries to align to the genome and the transcriptome,
+/// returning the alignment that is better.
+/// Determines whether the alignment is exonic, intronic,
+/// or intergenic.
+pub fn align_seed_hit<F: MatchFunc>(
+    index: &Index,
+    read: &[u8],
+    hit: &Mem,
+    swg: &mut SwgExtend<F>,
+    band_width: usize,
+    x_drop: i32,
+) -> GenomeAlignment {
+    let aln_ref = index.idx_to_ref(hit.ref_idx).0;
+
+    // extend seed hit in genome
+    let gx_aln = {
+        // region of the genome to align to
+        // TODO: use smaller region in genome
+        let seq_start =
+            (hit.ref_idx.saturating_sub(read.len() + band_width)).max(aln_ref.start_idx);
+        let seq_end = (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
+        let ref_seq = index.seq_slice(seq_start, seq_end);
+
+        let relative_hit = {
+            let mut h = hit.clone();
+            h.ref_idx -= seq_start;
+            h
+        };
+
+        let mut a = extend_left_right(&ref_seq, &relative_hit, read, swg, band_width, x_drop);
+        a.ystart += seq_start;
+        a.yend += seq_start;
+        a
+    };
+
+    // intersect seed hit with exons/transcripts
+    // find the one best alignment because they are all from the same gene
+    let mut best_tx_aln: Option<(usize, Alignment)> = None;
+    let tx_idxs_iter = index
+        .txome()
+        .exon_to_tx
+        .find(Interval::new(hit.ref_idx..hit.ref_idx + hit.len).unwrap())
+        .map(|e| *e.data());
+    for tx_idx in tx_idxs_iter {
+        let mut tx_seed = lift_mem_to_tx(&hit, &index.txome().txs[tx_idx]);
+        extend_seed_match(&index.txome().txs[tx_idx].seq, &mut tx_seed, read);
+        let tx_aln = extend_left_right(
+            &index.txome().txs[tx_idx].seq,
+            &tx_seed,
+            read,
+            swg,
+            band_width,
+            x_drop,
+        );
+        let tx_aln_score = tx_aln.score;
+        if best_tx_aln.is_none() || tx_aln_score > best_tx_aln.as_ref().unwrap().1.score {
+            best_tx_aln = Some((tx_idx, tx_aln));
+        }
+
+        // cannot do better than exact match
+        let match_score = 1;
+        if tx_aln_score >= (read.len() * match_score) as i32 {
+            break;
+        }
+    }
+
+    let ref_name = aln_ref.name.clone();
+    let strand = aln_ref.strand;
+
+    if best_tx_aln.is_some() && best_tx_aln.as_ref().unwrap().1.score >= gx_aln.score {
+        // spliced alignment to txome is better
+        let (tx_idx, tx_aln) = best_tx_aln.unwrap();
+
+        // lift to concatenated reference coordinates
+        // tx alignment could be either forwards or reversed
+        let lifted_aln = lift_tx_to_gx(&tx_aln, &index.txome().txs[tx_idx]);
+        // convert concatenated genome coordinates to coordinates within some chromosome
+        // make sure gx alignment is always relative to forwards strand
+        let gx_aln = concat_to_chr_aln(index, lifted_aln);
+        GenomeAlignment {
+            gx_aln,
+            aln_type: AlnType::Exonic { tx_aln, tx_idx },
+            ref_name,
+            strand,
+            primary: false,
+        }
+    } else {
+        // unspliced alignment is better
+        // check if genome alignment intersects any genes
+        let gene_idxs = index
+            .txome()
+            .gene_intervals
+            .find(Interval::new(gx_aln.ystart..gx_aln.yend).unwrap())
+            .map(|e| *e.data())
+            .collect::<Vec<_>>();
+        let gx_aln = concat_to_chr_aln(index, gx_aln);
+
+        if gene_idxs.is_empty() {
+            // intergenic
+            GenomeAlignment {
+                gx_aln,
+                aln_type: AlnType::Intergenic,
+                ref_name,
+                strand,
+                primary: false,
+            }
+        } else {
+            // intronic
+            // only choose one gene idx for simplicity
+            GenomeAlignment {
+                gx_aln,
+                aln_type: AlnType::Intronic {
+                    gene_idx: gene_idxs[0],
+                },
+                ref_name,
+                strand,
+                primary: false,
+            }
+        }
+    }
 }
 
-/// Convert an alignment that is lifted to the concatenated reference to be within
-/// a specific chromosome.
-fn lifted_aln_to_gx_aln(
-    index: &Index,
-    lifted_aln: Alignment,
-    tx_idx: usize,
-    tx_aln: Alignment,
-) -> GenomeAlignment {
-    let (aln_ref, _ref_idx) = index.idx_to_ref(lifted_aln.ystart);
-    let strand = index.txome().txs[tx_idx].strand;
+/// Only pick the max scoring alignment when there multiple alignments overlapping.
+pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment> {
+    if alns.is_empty() {
+        return alns;
+    }
+
+    alns.sort_by(|a, b| {
+        a.ref_name
+            .cmp(&b.ref_name)
+            .then(a.strand.cmp(&b.strand))
+            .then(a.gx_aln.ystart.cmp(&b.gx_aln.ystart))
+    });
+
+    let mut max_end = 0;
+    let mut res: Vec<GenomeAlignment> = Vec::with_capacity(alns.len());
+
+    for aln in alns.into_iter() {
+        if aln.gx_aln.ystart >= max_end
+            || aln.ref_name != res.last().unwrap().ref_name
+            || aln.strand != res.last().unwrap().strand
+        {
+            max_end = aln.gx_aln.yend;
+            res.push(aln);
+        } else {
+            let curr = res.last_mut().unwrap();
+            if aln.gx_aln.score > curr.gx_aln.score {
+                *curr = aln;
+            }
+            max_end = max_end.max(curr.gx_aln.yend);
+        }
+    }
+
+    res
+}
+
+/// Extend a seed hit left and right using banded SWG alignment.
+pub fn extend_left_right<F: MatchFunc>(
+    ref_seq: &[u8],
+    hit: &Mem,
+    read: &[u8],
+    swg: &mut SwgExtend<F>,
+    band_width: usize,
+    x_drop: i32,
+) -> Alignment {
+    let x = &read[hit.query_idx + hit.len..];
+    let y = &ref_seq[hit.ref_idx + hit.len..];
+    let right_aln = swg.extend(x, y, band_width, x_drop);
+
+    let x = {
+        let mut x = read[..hit.query_idx].to_owned();
+        x.reverse();
+        x
+    };
+    let y = {
+        let mut y =
+            ref_seq[hit.ref_idx.saturating_sub(read.len() + band_width)..hit.ref_idx].to_owned();
+        y.reverse();
+        y
+    };
+    let left_aln = swg.extend(&x, &y, band_width, x_drop);
+
+    let y_idx = (
+        hit.ref_idx - left_aln.yend,
+        hit.ref_idx + hit.len + right_aln.yend,
+    );
+    let x_idx = (
+        hit.query_idx - left_aln.xend,
+        hit.query_idx + hit.len + right_aln.xend,
+    );
+    // assuming unit scores
+    let match_score = 1;
+    let score = left_aln.score + (match_score * (hit.len as i32)) + right_aln.score;
+    let ops = left_aln
+        .operations
+        .into_iter()
+        .rev()
+        .chain((0..hit.len).map(|_| AlignmentOperation::Match))
+        .chain(right_aln.operations.into_iter())
+        .collect::<Vec<_>>();
+
+    Alignment {
+        score,
+        ystart: y_idx.0,
+        xstart: x_idx.0,
+        yend: y_idx.1,
+        xend: x_idx.1,
+        ylen: ref_seq.len(),
+        xlen: read.len(),
+        operations: ops,
+        mode: AlignmentMode::Custom,
+    }
+}
+
+/// Extend a seed hit left and right with exact matches.
+pub fn extend_seed_match(ref_seq: &[u8], hit: &mut Mem, read: &[u8]) {
+    while hit.ref_idx + hit.len < ref_seq.len()
+        && hit.query_idx + hit.len < read.len()
+        && ref_seq[hit.ref_idx + hit.len] == read[hit.query_idx + hit.len]
+    {
+        hit.len += 1;
+    }
+
+    while hit.ref_idx > 0
+        && hit.query_idx > 0
+        && ref_seq[hit.ref_idx - 1] == read[hit.query_idx - 1]
+    {
+        hit.ref_idx -= 1;
+        hit.query_idx -= 1;
+        hit.len += 1;
+    }
+}
+
+/// Convert an alignment on the concatenated reference to be within a specific chromosome.
+fn concat_to_chr_aln(index: &Index, aln: Alignment) -> Alignment {
+    let (aln_ref, _ref_idx) = index.idx_to_ref(aln.ystart);
     // convert alignments from concatenated reference coords to chromosome coords
-    let gx_aln = if strand {
+    if aln_ref.strand {
         Alignment {
-            ystart: lifted_aln.ystart - aln_ref.start_idx,
-            yend: lifted_aln.yend - aln_ref.start_idx,
+            ystart: aln.ystart - aln_ref.start_idx,
+            yend: aln.yend - aln_ref.start_idx,
             ylen: aln_ref.len,
-            ..lifted_aln
+            ..aln
         }
     } else {
         // need to convert interval to always be [left, right) regardless of strand
         Alignment {
-            ystart: aln_ref.len - (lifted_aln.yend - aln_ref.start_idx),
-            yend: aln_ref.len - (lifted_aln.ystart - aln_ref.start_idx),
+            ystart: aln_ref.len - (aln.yend - aln_ref.start_idx),
+            yend: aln_ref.len - (aln.ystart - aln_ref.start_idx),
             ylen: aln_ref.len,
-            operations: lifted_aln.operations.into_iter().rev().collect(),
-            ..lifted_aln
+            operations: aln.operations.into_iter().rev().collect(),
+            ..aln
         }
-    };
-    GenomeAlignment {
-        gx_aln,
-        tx_aln,
-        tx_idx,
-        ref_name: aln_ref.name.to_owned(),
-        strand,
-        primary: false,
     }
 }
 
 /// Struct to conveniently pass around many alignment parameters.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AlignOpts {
     /// Min length of a SMEM seed.
     pub min_seed_len: usize,
     /// Min alignment score as a percentage of read length
     pub min_aln_score_percent: f32,
-    /// Min total length of all seed hits for a read.
-    pub min_total_hit_len: usize,
+    /// Min alignment score
+    pub min_aln_score: i32,
     /// Range of alignment scores below the max score to output.
     pub multimap_score_range: usize,
+    /// Whether to output intronic and intergenic alignments.
+    pub intron_mode: bool,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use bio::alignment::AlignmentOperation::*;
+
+    #[test]
+    fn test_filter_overlapping() {
+        let gx_alns = vec![
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 3,
+                    xstart: 0,
+                    yend: 6,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 1,
+                    ystart: 5,
+                    xstart: 0,
+                    yend: 10,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 10,
+                    xstart: 0,
+                    yend: 15,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 5,
+                    xstart: 0,
+                    yend: 15,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: false,
+                primary: false,
+            },
+        ];
+
+        let correct_gx_alns = vec![
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 5,
+                    xstart: 0,
+                    yend: 15,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: false,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 1,
+                    ystart: 5,
+                    xstart: 0,
+                    yend: 10,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 10,
+                    xstart: 0,
+                    yend: 15,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+        ];
+
+        let res_alns = filter_overlapping(gx_alns);
+        assert_eq!(res_alns, correct_gx_alns);
+    }
+
+    #[test]
+    fn test_extend_left_right() {
+        let scoring = Scoring::from_scores(-1, -1, 1, -1);
+        let mut swg = SwgExtend::new(4, scoring);
+        let x = b"GGGGCCTTGAGTAA";
+        let y = b"AAAAAAACCTTGGGTTTTTTTT";
+
+        let hit = Mem {
+            ref_idx: 9,
+            query_idx: 6,
+            len: 3,
+        };
+        let correct_aln = Alignment {
+            score: 6,
+            ystart: 7,
+            xstart: 4,
+            yend: 15,
+            xend: 12,
+            ylen: 22,
+            xlen: 14,
+            operations: vec![
+                Xclip(4),
+                Match,
+                Match,
+                Match,
+                Match,
+                Match,
+                Subst,
+                Match,
+                Match,
+                Xclip(2),
+            ],
+            mode: AlignmentMode::Custom,
+        };
+        let res_aln = extend_left_right(y, &hit, x, &mut swg, 1, 1);
+        assert_eq!(res_aln, correct_aln);
+    }
 }

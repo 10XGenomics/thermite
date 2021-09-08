@@ -3,12 +3,15 @@ use serde::{Deserialize, Serialize};
 use bio::alignment::{Alignment, AlignmentOperation};
 use bio::data_structures::interval_tree::IntervalTree;
 
+use crate::index::Mem;
+
 /// A transcriptome that holds all the genes and transcripts.
 #[derive(Serialize, Deserialize)]
 pub struct Txome {
     pub genes: Vec<Gene>,
     pub txs: Vec<Tx>,
     pub exon_to_tx: IntervalTree<usize, usize>,
+    pub gene_intervals: IntervalTree<usize, usize>,
 }
 
 /// A single transcript and its associated information.
@@ -44,26 +47,59 @@ impl Exon {
     }
 }
 
-/// A transcript hit that is used when intersecting query reads with exons and their transcripts.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TxHit {
-    pub tx_idx: usize,
-    pub hits: usize,
-    pub total_len: usize,
-}
-
 /// Represents an alignment within the genome.
 ///
 /// This also contains the transcriptome alignment from before this alignment
 /// is lifted to genome coordinates.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenomeAlignment {
     pub gx_aln: Alignment,
-    pub tx_aln: Alignment,
-    pub tx_idx: usize,
+    pub aln_type: AlnType,
     pub ref_name: String,
     pub strand: bool,
     pub primary: bool,
+}
+// TODO: antisense alignments to genes and transcripts
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlnType {
+    Exonic { tx_aln: Alignment, tx_idx: usize },
+    Intronic { gene_idx: usize },
+    Intergenic,
+}
+
+/// Check if larger interval fully contains the smaller one.
+pub fn contains(larger: &(usize, usize), smaller: &(usize, usize)) -> bool {
+    smaller.0 >= larger.0 && smaller.1 < larger.1
+}
+
+/// Check if two intervals intersect.
+pub fn intersect(a: &(usize, usize), b: &(usize, usize)) -> bool {
+    (a.0 >= b.0 && a.0 < b.1) || (b.0 >= a.0 && b.0 < a.1)
+}
+
+/// Lift a MEM from concatenated genome coordinates to a specific exon in a transcript.
+pub fn lift_mem_to_tx(mem: &Mem, tx: &Tx) -> Mem {
+    let mut exon_sum = 0;
+
+    for exon in &tx.exons {
+        if intersect(
+            &(mem.ref_idx, mem.ref_idx + mem.len),
+            &(exon.start, exon.end),
+        ) {
+            let start = mem.ref_idx.saturating_sub(exon.start) + exon_sum;
+            let start_offset = exon.start.saturating_sub(mem.ref_idx);
+            let end = (mem.ref_idx + mem.len).min(exon.end) - exon.start + exon_sum;
+            return Mem {
+                ref_idx: start,
+                query_idx: mem.query_idx + start_offset,
+                len: end - start,
+            };
+        }
+        exon_sum += exon.len();
+    }
+
+    unreachable!()
 }
 
 /// Lift a transcriptome alignment to a concatenated reference alignment.
@@ -128,6 +164,69 @@ mod test {
     use super::*;
 
     use bio::alignment::AlignmentMode;
+
+    #[test]
+    fn test_lift_mem_to_tx() {
+        let exons = vec![
+            Exon {
+                start: 3,
+                end: 6,
+                tx_idx: 0,
+            },
+            Exon {
+                start: 10,
+                end: 13,
+                tx_idx: 0,
+            },
+        ];
+        let tx = Tx {
+            id: "".to_owned(),
+            chrom: "".to_owned(),
+            strand: true,
+            exons,
+            seq: Vec::new(),
+            gene_idx: 0,
+        };
+
+        let mem = Mem {
+            ref_idx: 4,
+            query_idx: 3,
+            len: 2,
+        };
+        let correct_mem = Mem {
+            ref_idx: 1,
+            query_idx: 3,
+            len: 2,
+        };
+        let res_mem = lift_mem_to_tx(&mem, &tx);
+        assert_eq!(res_mem, correct_mem);
+
+        let mem = Mem {
+            ref_idx: 9,
+            query_idx: 3,
+            len: 3,
+        };
+        let correct_mem = Mem {
+            ref_idx: 3,
+            query_idx: 4,
+            len: 2,
+        };
+        let res_mem = lift_mem_to_tx(&mem, &tx);
+        assert_eq!(res_mem, correct_mem);
+
+        let mem = Mem {
+            ref_idx: 12,
+            query_idx: 3,
+            len: 3,
+        };
+        let correct_mem = Mem {
+            ref_idx: 5,
+            query_idx: 3,
+            len: 1,
+        };
+        let res_mem = lift_mem_to_tx(&mem, &tx);
+        assert_eq!(res_mem, correct_mem);
+    }
 
     #[test]
     fn test_lift_tx_to_gx() {

@@ -2,8 +2,6 @@
 
 use clap::Clap;
 
-use anyhow::Result;
-
 use bincode;
 
 use std::ffi::OsStr;
@@ -15,7 +13,7 @@ use std::path::Path;
 use thermite_aligner::aln_writer::OutputFormat;
 use thermite_aligner::{aligner, index};
 
-fn main() -> Result<()> {
+fn main() {
     let opts = ThermiteOpts::parse();
 
     if opts.verbose {
@@ -29,7 +27,8 @@ fn main() -> Result<()> {
                 &index_opts.annotations,
                 index_opts.sa_sampling_rate,
                 index_opts.occ_sampling_rate,
-            )?;
+            )
+            .unwrap();
 
             if opts.verbose {
                 index.print_stats();
@@ -37,9 +36,11 @@ fn main() -> Result<()> {
 
             let index_file: Box<dyn Write> = match &index_opts.index[..] {
                 "-" => Box::new(BufWriter::new(io::stdout())),
-                _ => Box::new(BufWriter::new(File::create(&index_opts.index)?)),
+                _ => Box::new(BufWriter::new(File::create(&index_opts.index).expect(
+                    &format!("Failed to create index file at {}", &index_opts.index),
+                ))),
             };
-            bincode::serialize_into(index_file, &index)?;
+            bincode::serialize_into(index_file, &index).unwrap();
         }
         SubCommand::Align(align_opts) => {
             assert!(
@@ -59,8 +60,11 @@ fn main() -> Result<()> {
                 OutputFormat::Paf
             };
 
-            let index_file = BufReader::new(File::open(&align_opts.index)?);
-            let index = bincode::deserialize_from(index_file)?;
+            let index_file = BufReader::new(File::open(&align_opts.index).expect(&format!(
+                "Failed to open index file at {}",
+                &align_opts.index
+            )));
+            let index = bincode::deserialize_from(index_file).unwrap();
 
             aligner::align_reads_from_file(
                 &index,
@@ -70,14 +74,14 @@ fn main() -> Result<()> {
                 &aligner::AlignOpts {
                     min_seed_len: align_opts.min_seed_len,
                     min_aln_score_percent: align_opts.min_aln_score_percent,
-                    min_total_hit_len: align_opts.min_total_hit_len,
+                    min_aln_score: align_opts.min_aln_score,
                     multimap_score_range: align_opts.multimap_score_range,
+                    intron_mode: align_opts.intron_mode,
                 },
-            )?;
+            )
+            .unwrap();
         }
     }
-
-    Ok(())
 }
 
 #[derive(Debug, Clap)]
@@ -91,7 +95,7 @@ pub struct Index {
     #[clap(short = 'o', long = "output", default_value = "-")]
     pub index: String,
     /// Suffix array sampling rate
-    #[clap(long, default_value = "16")]
+    #[clap(long, default_value = "32")]
     pub sa_sampling_rate: usize,
     /// FM index Occ array sampling rate
     #[clap(long, default_value = "128")]
@@ -114,15 +118,18 @@ pub struct Align {
     /// Minimum alignment score as a percentage of the read length
     #[clap(short = 's', long, default_value = "0.66")]
     pub min_aln_score_percent: f32,
-    /// Minimum total seed hit length (sum of the lengths of all seed hits)
-    #[clap(long, default_value = "40")]
-    pub min_total_hit_len: usize,
+    /// Minimum alignment score
+    #[clap(long, default_value = "30")]
+    pub min_aln_score: i32,
     /// Multimap score range
     #[clap(long, default_value = "1")]
     pub multimap_score_range: usize,
     /// Output in SAM or BAM format instead of PAF
     #[clap(short = 'a')]
     pub bam: bool,
+    /// Whether to output intronic or intergenic alignments
+    #[clap(long)]
+    pub intron_mode: bool,
 }
 
 #[derive(Debug, Clap)]
