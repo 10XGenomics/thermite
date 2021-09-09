@@ -25,6 +25,7 @@ noodles = { version = "^0.1.0", features = ["bam", "core", "gff", "sam"] }
 rust-htslib = { version = "^0.38.2", default-features = false }
 serde = { version = "^1.0", features = ["derive"] }
 transcriptome = { version = "^0.1.0", git = "https://github.com/10XDev/cellranger", optional = true }
+block-aligner = { version = "^0.2.0", features = ["simd_avx2"] }
 
 [profile.dev]
 opt-level = 3

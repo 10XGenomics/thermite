@@ -1,6 +1,10 @@
 use bio::alignment::pairwise::{MatchFunc, Scoring, MIN_SCORE};
 use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
 
+use block_aligner::scan_block::*;
+use block_aligner::scores::*;
+use block_aligner::cigar::*;
+
 /// Smith-Waterman-Gotoh banded extension alignment.
 #[allow(non_snake_case)]
 pub struct SwgExtend<F: MatchFunc> {
@@ -15,6 +19,21 @@ pub struct SwgExtend<F: MatchFunc> {
 impl<F: MatchFunc> SwgExtend<F> {
     /// Allocate space for alignments up to a certain band size.
     pub fn new(max_band_width: usize, scoring: Scoring<F>) -> Self {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") {
+                return Self {
+                    D: Vec::new(),
+                    C: Vec::new(),
+                    R: Vec::new(),
+                    trace: Vec::new(),
+                    scoring,
+                    max_band_width,
+                };
+            }
+
+        }
+
         Self {
             D: vec![0; max_band_width * 2 + 1],
             C: vec![0; max_band_width * 2 + 1],
@@ -22,6 +41,76 @@ impl<F: MatchFunc> SwgExtend<F> {
             trace: Vec::new(),
             scoring,
             max_band_width,
+        }
+    }
+
+    /// Extension alignment using SIMD-accelerated block aligner.
+    fn extend_simd(&mut self, x: &[u8], y: &[u8], _band_width: usize, x_drop: i32) -> Alignment {
+        let block_size = 32;
+        let gaps = Gaps {
+            open: (self.scoring.gap_open + self.scoring.gap_extend) as i8,
+            extend: self.scoring.gap_extend as i8,
+        };
+        let q = PaddedBytes::from_bytes::<NucMatrix>(x, block_size);
+        let r = PaddedBytes::from_bytes::<NucMatrix>(y, block_size);
+        let matrix = NucMatrix::new_simple(
+            self.scoring.match_fn.score(b'A', b'A') as i8,
+            self.scoring.match_fn.score(b'A', b'C') as i8,
+        );
+
+        // align with X-drop threshold and store trace
+        let a = Block::<_, true, true>::align(&q, &r, &matrix, gaps, block_size..=block_size, x_drop);
+        let res = a.res();
+        let cigar = a.trace().cigar(res.query_idx, res.reference_idx);
+        let operations = {
+            let mut o = Vec::with_capacity(x.len() + y.len() + 4);
+            let mut i = 0;
+            let mut j = 0;
+
+            for k in 0..cigar.len() {
+                let op_len = cigar.get(k);
+
+                match op_len.op {
+                    Operation::M => {
+                        for _ in 0..op_len.len {
+                            o.push(if x[i] == y[j] {
+                                AlignmentOperation::Match
+                            } else {
+                                AlignmentOperation::Subst
+                            });
+                            i += 1;
+                            j += 1;
+                        }
+                    },
+                    Operation::I => {
+                        o.resize(o.len() + op_len.len, AlignmentOperation::Ins);
+                        i += op_len.len;
+                    },
+                    Operation::D => {
+                        o.resize(o.len() + op_len.len, AlignmentOperation::Del);
+                        j += op_len.len;
+                    },
+                    _ => unreachable!(),
+                };
+            }
+
+            if res.query_idx < x.len() {
+                o.push(AlignmentOperation::Xclip(x.len() - res.query_idx));
+            }
+
+            o
+        };
+
+        Alignment {
+            score: res.score,
+            ystart: 0,
+            xstart: 0,
+            yend: res.reference_idx,
+            xend: res.query_idx,
+            ylen: y.len(),
+            xlen: x.len(),
+            operations,
+            mode: AlignmentMode::Custom,
         }
     }
 
@@ -52,6 +141,13 @@ impl<F: MatchFunc> SwgExtend<F> {
                 },
                 mode: AlignmentMode::Custom,
             };
+        }
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") {
+                return self.extend_simd(x, y, band_width, x_drop);
+            }
         }
 
         let w = band_width * 2 + 1;
