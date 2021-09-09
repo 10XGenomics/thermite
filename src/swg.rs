@@ -339,12 +339,13 @@ impl<F: MatchFunc> SwgExtend<F> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::aligner::{GAP_EXTEND, GAP_OPEN, MATCH, MISMATCH};
 
     use bio::alignment::AlignmentOperation::*;
 
     #[test]
     fn test_swg_extend() {
-        let scoring = Scoring::from_scores(-1, -1, 1, -1);
+        let scoring = Scoring::from_scores(GAP_OPEN, GAP_EXTEND, MATCH, MISMATCH);
         let mut swg = SwgExtend::new(4, scoring);
 
         let x = b"AAAAAAAA";
@@ -395,20 +396,22 @@ mod test {
         let res_aln = swg.extend(x, y, 1, 1);
         assert_eq!(res_aln, correct_aln);
 
-        let x = b"AAATTTT";
-        let y = b"AAACCTTTT";
+        let x = b"AAATTTTTTTT";
+        let y = b"AAACCCTTTTTTTT";
         let correct_aln = Alignment {
-            score: 4,
+            score: 5,
             ystart: 0,
             xstart: 0,
-            yend: 9,
-            xend: 7,
-            ylen: 9,
-            xlen: 7,
-            operations: vec![Match, Match, Match, Del, Del, Match, Match, Match, Match],
+            yend: 11,
+            xend: 11,
+            ylen: 14,
+            xlen: 11,
+            operations: vec![
+                Match, Match, Match, Subst, Subst, Subst, Match, Match, Match, Match, Match,
+            ],
             mode: AlignmentMode::Custom,
         };
-        let res_aln = swg.extend(x, y, 2, 3);
+        let res_aln = swg.extend(x, y, 3, 8);
         assert_eq!(res_aln, correct_aln);
     }
 }

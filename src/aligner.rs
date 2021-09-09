@@ -119,6 +119,11 @@ pub fn align_reads_from_file(
     Ok(())
 }
 
+pub const MATCH: i32 = 1;
+pub const MISMATCH: i32 = -1;
+pub const GAP_OPEN: i32 = -2;
+pub const GAP_EXTEND: i32 = -2;
+
 /// Attempt to align a single read and return the alignments that are found.
 pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<GenomeAlignment> {
     // always make sure reads are uppercase
@@ -133,11 +138,11 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
     );
     let mut max_aln_score = min_aln_score;
     // saturating sub just in case floating point error
-    // assumes unit scores
-    let mut band_width = read.len().saturating_sub(min_aln_score as usize);
+    let mut band_width =
+        read.len().saturating_sub(min_aln_score as usize) / ((-GAP_EXTEND) as usize);
     let mut x_drop = read.len().saturating_sub(min_aln_score as usize);
 
-    let scoring = Scoring::from_scores(-1, -1, 1, -1);
+    let scoring = Scoring::from_scores(GAP_OPEN, GAP_EXTEND, MATCH, MISMATCH);
     let mut swg = SwgExtend::new(band_width, scoring);
 
     for hit in &mems {
@@ -162,7 +167,8 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
         band_width = cmp::min(
             band_width,
             (read.len() + align_opts.multimap_score_range)
-                .saturating_sub(gx_aln.gx_aln.score as usize),
+                .saturating_sub(gx_aln.gx_aln.score as usize)
+                / ((-GAP_EXTEND) as usize),
         );
         x_drop = cmp::min(
             x_drop,
@@ -251,8 +257,7 @@ pub fn align_seed_hit<F: MatchFunc>(
         }
 
         // cannot do better than exact match
-        let match_score = 1;
-        if tx_aln_score >= (read.len() * match_score) as i32 {
+        if tx_aln_score >= (read.len() as i32) * MATCH {
             break;
         }
     }
@@ -382,9 +387,7 @@ pub fn extend_left_right<F: MatchFunc>(
         hit.query_idx - left_aln.xend,
         hit.query_idx + hit.len + right_aln.xend,
     );
-    // assuming unit scores
-    let match_score = 1;
-    let score = left_aln.score + (match_score * (hit.len as i32)) + right_aln.score;
+    let score = left_aln.score + (MATCH * (hit.len as i32)) + right_aln.score;
     let ops = left_aln
         .operations
         .into_iter()
@@ -602,7 +605,7 @@ mod test {
 
     #[test]
     fn test_extend_left_right() {
-        let scoring = Scoring::from_scores(-1, -1, 1, -1);
+        let scoring = Scoring::from_scores(GAP_OPEN, GAP_EXTEND, MATCH, MISMATCH);
         let mut swg = SwgExtend::new(4, scoring);
         let x = b"GGGGCCTTGAGTAA";
         let y = b"AAAAAAACCTTGGGTTTTTTTT";
