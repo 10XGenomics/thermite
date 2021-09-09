@@ -44,8 +44,8 @@ impl<F: MatchFunc> SwgExtend<F> {
     }
 
     /// Extension alignment using SIMD-accelerated block aligner.
-    fn extend_simd(&mut self, x: &[u8], y: &[u8], _band_width: usize, x_drop: i32) -> Alignment {
-        let block_size = 32;
+    fn extend_simd(&mut self, x: &[u8], y: &[u8], band_width: usize, x_drop: i32) -> Alignment {
+        let block_size = if band_width <= 16 { 16 } else { 32 };
         let gaps = Gaps {
             open: (self.scoring.gap_open + self.scoring.gap_extend) as i8,
             extend: self.scoring.gap_extend as i8,
