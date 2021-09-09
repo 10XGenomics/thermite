@@ -1,9 +1,9 @@
 use bio::alignment::pairwise::{MatchFunc, Scoring, MIN_SCORE};
 use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
 
+use block_aligner::cigar::*;
 use block_aligner::scan_block::*;
 use block_aligner::scores::*;
-use block_aligner::cigar::*;
 
 /// Smith-Waterman-Gotoh banded extension alignment.
 #[allow(non_snake_case)]
@@ -31,7 +31,6 @@ impl<F: MatchFunc> SwgExtend<F> {
                     max_band_width,
                 };
             }
-
         }
 
         Self {
@@ -59,7 +58,8 @@ impl<F: MatchFunc> SwgExtend<F> {
         );
 
         // align with X-drop threshold and store trace
-        let a = Block::<_, true, true>::align(&q, &r, &matrix, gaps, block_size..=block_size, x_drop);
+        let a =
+            Block::<_, true, true>::align(&q, &r, &matrix, gaps, block_size..=block_size, x_drop);
         let res = a.res();
         let cigar = a.trace().cigar(res.query_idx, res.reference_idx);
         let operations = {
@@ -81,15 +81,15 @@ impl<F: MatchFunc> SwgExtend<F> {
                             i += 1;
                             j += 1;
                         }
-                    },
+                    }
                     Operation::I => {
                         o.resize(o.len() + op_len.len, AlignmentOperation::Ins);
                         i += op_len.len;
-                    },
+                    }
                     Operation::D => {
                         o.resize(o.len() + op_len.len, AlignmentOperation::Del);
                         j += op_len.len;
-                    },
+                    }
                     _ => unreachable!(),
                 };
             }
