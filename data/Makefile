@@ -38,7 +38,7 @@ else ifeq ($(dataset), chr21)
 	index_flags=
 	aln_flags=-k20 -s0 --intron-mode
 else
-	$(error The dataset name $(dataset) is invalid!)
+$(error The dataset name $(dataset) is invalid!)
 endif
 
 SHELL=bash -e -o pipefail
