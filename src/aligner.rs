@@ -265,7 +265,10 @@ pub fn align_seed_hit<F: MatchFunc>(
     let ref_name = aln_ref.name.clone();
     let strand = aln_ref.strand;
 
-    if best_tx_aln.is_some() && best_tx_aln.as_ref().unwrap().1.score >= gx_aln.score {
+    // small threshold to favor txome alignment
+    const FAVOR_TX_ALN: i32 = 2;
+    if best_tx_aln.is_some() && best_tx_aln.as_ref().unwrap().1.score >= gx_aln.score - FAVOR_TX_ALN
+    {
         // spliced alignment to txome is better
         let (tx_idx, tx_aln) = best_tx_aln.unwrap();
 
