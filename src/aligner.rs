@@ -184,7 +184,7 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
         gx_aln.gx_aln.score >= max_aln_score - (align_opts.multimap_score_range as i32)
     });
 
-    let mut gx_alns = filter_overlapping(gx_alns);
+    filter_overlapping(&mut gx_alns);
 
     gx_alns.sort_by_key(|aln| -aln.gx_aln.score);
     // pick an arbitrary max scoring alignment as the primary alignment
@@ -321,39 +321,19 @@ pub fn align_seed_hit<F: MatchFunc>(
     }
 }
 
-/// Only pick the max scoring alignment when there multiple alignments overlapping.
-pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment> {
-    if alns.is_empty() {
-        return alns;
-    }
-
+/// Only pick the max scoring alignment when there multiple alignments starting at the same place.
+pub fn filter_overlapping(alns: &mut Vec<GenomeAlignment>) {
     alns.sort_by(|a, b| {
         a.ref_name
             .cmp(&b.ref_name)
             .then(a.strand.cmp(&b.strand))
             .then(a.gx_aln.ystart.cmp(&b.gx_aln.ystart))
+            .then(b.gx_aln.score.cmp(&a.gx_aln.score))
     });
 
-    let mut max_end = 0;
-    let mut res: Vec<GenomeAlignment> = Vec::with_capacity(alns.len());
-
-    for aln in alns.into_iter() {
-        if aln.gx_aln.ystart >= max_end
-            || aln.ref_name != res.last().unwrap().ref_name
-            || aln.strand != res.last().unwrap().strand
-        {
-            max_end = aln.gx_aln.yend;
-            res.push(aln);
-        } else {
-            let curr = res.last_mut().unwrap();
-            if aln.gx_aln.score > curr.gx_aln.score {
-                *curr = aln;
-            }
-            max_end = max_end.max(curr.gx_aln.yend);
-        }
-    }
-
-    res
+    alns.dedup_by(|a, b| {
+        a.gx_aln.ystart == b.gx_aln.ystart && a.ref_name == b.ref_name && a.strand == b.strand
+    });
 }
 
 /// Extend a seed hit left and right using banded SWG alignment.
@@ -477,7 +457,7 @@ mod test {
 
     #[test]
     fn test_filter_overlapping() {
-        let gx_alns = vec![
+        let mut gx_alns = vec![
             GenomeAlignment {
                 gx_aln: Alignment {
                     score: 0,
@@ -492,7 +472,78 @@ mod test {
                 },
                 aln_type: AlnType::Intergenic,
                 ref_name: "a".to_owned(),
+                strand: false,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 1,
+                    ystart: 5,
+                    xstart: 0,
+                    yend: 10,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
                 strand: true,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 10,
+                    xstart: 0,
+                    yend: 15,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 5,
+                    xstart: 0,
+                    yend: 15,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: true,
+                primary: false,
+            },
+        ];
+
+        let correct_gx_alns = vec![
+            GenomeAlignment {
+                gx_aln: Alignment {
+                    score: 0,
+                    ystart: 3,
+                    xstart: 0,
+                    yend: 6,
+                    xend: 0,
+                    xlen: 0,
+                    ylen: 0,
+                    operations: Vec::new(),
+                    mode: AlignmentMode::Custom,
+                },
+                aln_type: AlnType::Intergenic,
+                ref_name: "a".to_owned(),
+                strand: false,
                 primary: false,
             },
             GenomeAlignment {
@@ -529,81 +580,10 @@ mod test {
                 strand: true,
                 primary: false,
             },
-            GenomeAlignment {
-                gx_aln: Alignment {
-                    score: 0,
-                    ystart: 5,
-                    xstart: 0,
-                    yend: 15,
-                    xend: 0,
-                    xlen: 0,
-                    ylen: 0,
-                    operations: Vec::new(),
-                    mode: AlignmentMode::Custom,
-                },
-                aln_type: AlnType::Intergenic,
-                ref_name: "a".to_owned(),
-                strand: false,
-                primary: false,
-            },
         ];
 
-        let correct_gx_alns = vec![
-            GenomeAlignment {
-                gx_aln: Alignment {
-                    score: 0,
-                    ystart: 5,
-                    xstart: 0,
-                    yend: 15,
-                    xend: 0,
-                    xlen: 0,
-                    ylen: 0,
-                    operations: Vec::new(),
-                    mode: AlignmentMode::Custom,
-                },
-                aln_type: AlnType::Intergenic,
-                ref_name: "a".to_owned(),
-                strand: false,
-                primary: false,
-            },
-            GenomeAlignment {
-                gx_aln: Alignment {
-                    score: 1,
-                    ystart: 5,
-                    xstart: 0,
-                    yend: 10,
-                    xend: 0,
-                    xlen: 0,
-                    ylen: 0,
-                    operations: Vec::new(),
-                    mode: AlignmentMode::Custom,
-                },
-                aln_type: AlnType::Intergenic,
-                ref_name: "a".to_owned(),
-                strand: true,
-                primary: false,
-            },
-            GenomeAlignment {
-                gx_aln: Alignment {
-                    score: 0,
-                    ystart: 10,
-                    xstart: 0,
-                    yend: 15,
-                    xend: 0,
-                    xlen: 0,
-                    ylen: 0,
-                    operations: Vec::new(),
-                    mode: AlignmentMode::Custom,
-                },
-                aln_type: AlnType::Intergenic,
-                ref_name: "a".to_owned(),
-                strand: true,
-                primary: false,
-            },
-        ];
-
-        let res_alns = filter_overlapping(gx_alns);
-        assert_eq!(res_alns, correct_gx_alns);
+        filter_overlapping(&mut gx_alns);
+        assert_eq!(gx_alns, correct_gx_alns);
     }
 
     #[test]
