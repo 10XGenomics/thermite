@@ -2,21 +2,23 @@ import numpy as np
 import scipy.sparse as sp_sparse
 import h5py
 
-cr_basedir = '/mnt/home/daniel.liu/cellranger/pbmc1k_star/outs/'
-thermite_basedir = '/mnt/home/daniel.liu/cellranger/pbmc1k_thermite/outs/'
+cr_basedir = "/mnt/home/daniel.liu/cellranger/pbmc1k_star/outs/"
+thermite_basedir = "/mnt/home/daniel.liu/cellranger/pbmc1k_thermite/outs/"
+
 
 def load_h5_file(basedir):
     h5_file = basedir + "/raw_feature_bc_matrix.h5"
-    h5 = h5py.File(h5_file, 'r')
-    matrix= h5['matrix']
-    barcodes_np = matrix.get('barcodes')[()]
-    data_np = matrix.get('data')[()]
-    indices_np = matrix.get('indices')[()]
-    indptr_np = matrix.get('indptr')[()]
-    shape = matrix.get('shape')[()]
+    h5 = h5py.File(h5_file, "r")
+    matrix = h5["matrix"]
+    barcodes_np = matrix.get("barcodes")[()]
+    data_np = matrix.get("data")[()]
+    indices_np = matrix.get("indices")[()]
+    indptr_np = matrix.get("indptr")[()]
+    shape = matrix.get("shape")[()]
     count_matrix = sp_sparse.csc_matrix((data_np, indices_np, indptr_np), shape=shape)
-    features_np = matrix.get('features').get('id')[()]
+    features_np = matrix.get("features").get("id")[()]
     return count_matrix, features_np
+
 
 thermite_count_matrix, thermite_features = load_h5_file(thermite_basedir)
 cellranger_count_matrix, cr_features = load_h5_file(cr_basedir)
