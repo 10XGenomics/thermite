@@ -5,13 +5,14 @@ use anyhow::Result;
 
 use needletail::*;
 
-use bio::alphabets::{dna, Alphabet};
-use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
-use bio::data_structures::fmindex::{FMDIndex, FMIndex};
+use bio::alphabets::dna;
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::data_structures::suffix_array::{RawSuffixArray, SampledSuffixArray, SuffixArray};
 use bio::io::fasta::IndexedReader;
 use bio::utils::Interval;
+use bio_opt::alphabets::Alphabet;
+use bio_opt::data_structures::bwt::{bwt, less, Less, Occ, BWT};
+use bio_opt::data_structures::fmindex::{FMDIndex, FMIndex};
+use bio_opt::data_structures::suffix_array::{RawSuffixArray, SampledSuffixArray, SuffixArray};
 
 use bio_types::strand::ReqStrand;
 
@@ -107,7 +108,7 @@ impl Index {
         // use a subset of the required alphabet for FMD index
         let alpha = Alphabet::new(b"ACGNT");
         let less = less(&bwt, &alpha);
-        let occ = Occ::new(&bwt, occ_sampling_rate as u32, &alpha);
+        let occ = Occ::new(&bwt, occ_sampling_rate as u32);
         let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
 
         drop(seq);
