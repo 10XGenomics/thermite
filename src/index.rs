@@ -102,7 +102,6 @@ impl Index {
         let txome = Self::create_txome(ref_path, annot_path, &name_to_ref, &refs)?;
 
         // concatenate transcript sequences after chromosome sequences
-        // TODO: revcomp transcript sequences for antisense alignments?
         for (i, tx) in txome.txs.iter().enumerate() {
             // end index includes '$', length does not
             let start_idx = seq.len();
@@ -112,6 +111,19 @@ impl Index {
                 name: "".to_owned(),
                 ref_type: RefType::Tx { tx_idx: i },
                 strand: true,
+                len: tx.seq.len(),
+                start_idx,
+                end_idx: seq.len(),
+            });
+
+            let start_idx = seq.len();
+            let revcomp = dna::revcomp(&tx.seq);
+            seq.extend_from_slice(&revcomp);
+            seq.push(b'$');
+            refs.push(Ref {
+                name: "".to_owned(),
+                ref_type: RefType::Tx { tx_idx: i },
+                strand: false,
                 len: tx.seq.len(),
                 start_idx,
                 end_idx: seq.len(),
@@ -253,6 +265,13 @@ impl Index {
             let mem_len = interval.2;
 
             for ref_idx in &forwards_idxs {
+                // TODO: don't ignore antisense transcript seed hits
+                let curr_ref = &self.refs[self.refs.partition_point(|x| x.end_idx <= *ref_idx)];
+                match curr_ref.ref_type {
+                    RefType::Tx { .. } if !curr_ref.strand => continue,
+                    _ => (),
+                }
+
                 mems.push(Mem {
                     query_idx,
                     ref_idx: *ref_idx,

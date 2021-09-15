@@ -8,7 +8,7 @@ use bio::alignment::pairwise::{MatchFunc, Scoring};
 use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
 use bio::utils::Interval;
 
-use std::cmp;
+use std::cmp::{self, Ordering};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
@@ -305,6 +305,14 @@ pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment
         return alns;
     }
 
+    fn rank_type(aln: &GenomeAlignment) -> usize {
+        match aln.aln_type {
+            AlnType::Exonic { .. } => 3,
+            AlnType::Intronic { .. } => 2,
+            AlnType::Intergenic => 1,
+        }
+    }
+
     alns.sort_by(|a, b| {
         a.ref_name
             .cmp(&b.ref_name)
@@ -324,7 +332,11 @@ pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment
             res.push(aln);
         } else {
             let curr = res.last_mut().unwrap();
-            if aln.gx_aln.score > curr.gx_aln.score {
+            let aln_rank = rank_type(&aln);
+            let curr_rank = rank_type(&curr);
+
+            // favor exonic alignments
+            if aln.gx_aln.score.cmp(&curr.gx_aln.score).then(aln_rank.cmp(&curr_rank)) == Ordering::Greater {
                 *curr = aln;
             }
             max_end = max_end.max(curr.gx_aln.yend);
