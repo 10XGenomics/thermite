@@ -10,7 +10,6 @@ use crate::index::Mem;
 pub struct Txome {
     pub genes: Vec<Gene>,
     pub txs: Vec<Tx>,
-    pub exon_to_tx: IntervalTree<usize, usize>,
     pub gene_intervals: IntervalTree<usize, usize>,
 }
 

@@ -60,11 +60,9 @@ impl Index {
         let mut refs = Vec::with_capacity(8);
         let mut seq = Vec::with_capacity(1024);
 
-        #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-        struct NameStrand(String, bool);
         let mut name_to_ref: HashMap<NameStrand, usize> = HashMap::new();
 
-        // concatenate all reference sequences
+        // concatenate all chromosome sequences
         while let Some(record) = ref_reader.next() {
             let record = record?;
             let name = str::from_utf8(record.id())?.split(' ').next().unwrap();
@@ -78,7 +76,7 @@ impl Index {
             name_to_ref.insert(NameStrand(name.to_owned(), true), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
-                seq: Some(curr_seq),
+                ref_type: RefType::Chr { seq: Some(curr_seq) },
                 strand: true,
                 len: record.seq().len(),
                 start_idx,
@@ -93,7 +91,7 @@ impl Index {
             name_to_ref.insert(NameStrand(name.to_owned(), false), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
-                seq: None,
+                ref_type: RefType::Chr { seq: None },
                 strand: false,
                 len: record.seq().len(),
                 start_idx,
@@ -101,6 +99,26 @@ impl Index {
             });
         }
 
+        let txome = Self::create_txome(ref_path, annot_path, &name_to_ref, &refs)?;
+
+        // concatenate transcript sequences after chromosome sequences
+        // TODO: revcomp transcript sequences for antisense alignments?
+        for (i, tx) in txome.txs.iter().enumerate() {
+            // end index includes '$', length does not
+            let start_idx = seq.len();
+            seq.extend_from_slice(&tx.seq);
+            seq.push(b'$');
+            refs.push(Ref {
+                name: "".to_owned(),
+                ref_type: RefType::Tx { tx_idx: i },
+                strand: true,
+                len: tx.seq.len(),
+                start_idx,
+                end_idx: seq.len(),
+            });
+        }
+
+        // construct FMD index
         let sa =
             cast_vec_i64_to_usize(divsufsort64(&seq).expect("Suffix array construction failed!"))
                 as RawSuffixArray;
@@ -111,8 +129,10 @@ impl Index {
         let occ = Occ::new(&bwt, occ_sampling_rate as u32);
         let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
 
-        drop(seq);
+        Ok(Index { refs, sa, txome })
+    }
 
+    fn create_txome(ref_path: &str, annot_path: &str, name_to_ref: &HashMap<NameStrand, usize>, refs: &[Ref]) -> Result<Txome> {
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
             genes: txome_genes,
@@ -132,8 +152,7 @@ impl Index {
             })
             .collect::<Vec<_>>();
 
-        let mut gene_intervals = vec![(sa.bwt().len(), 0); genes.len()];
-        let mut exon_to_tx = IntervalTree::new();
+        let mut gene_intervals = vec![(usize::MAX, 0); genes.len()];
         let err_msg = format!("Error in reading reference file {}", ref_path);
         let txs = txome_txs
             .into_iter()
@@ -180,9 +199,6 @@ impl Index {
                         };
                         let exon_tx_idx = tx.idx.0 as usize;
 
-                        exon_to_tx
-                            .insert(Interval::new(exon_start..exon_end).unwrap(), exon_tx_idx);
-
                         Exon {
                             start: exon_start as usize,
                             end: exon_end as usize,
@@ -213,14 +229,11 @@ impl Index {
                 .map(|(i, (start, end))| (Interval::new(start..end).unwrap(), i)),
         );
 
-        let txome = Txome {
+        Ok(Txome {
             genes,
             txs,
-            exon_to_tx,
             gene_intervals,
-        };
-
-        Ok(Index { refs, sa, txome })
+        })
     }
 
     /// Find all SMEMs for a query sequence.
@@ -305,19 +318,29 @@ impl Index {
     pub fn seq_slice(&self, start: usize, end: usize) -> Cow<[u8]> {
         let ref_idx = self.refs.partition_point(|x| x.end_idx <= start);
         let curr_ref = &self.refs[ref_idx];
+        // don't worry about slicing a transcript sequence
+        let seq = match &curr_ref.ref_type {
+            RefType::Chr { seq } => seq,
+            _ => unreachable!(),
+        };
 
-        match &curr_ref.seq {
+        match seq {
             Some(s) => {
                 let chrom_start = start - curr_ref.start_idx;
                 let chrom_end = end - curr_ref.start_idx;
                 Cow::Borrowed(&s[chrom_start..chrom_end])
             }
             None => {
+                // the reference sequence before a revcomp sequence must be the corresponding forwards sequence
                 let prev_ref = &self.refs[ref_idx - 1];
                 let chrom_start = curr_ref.end_idx - 1 - end;
                 let chrom_end = curr_ref.end_idx - 1 - start;
+                let prev_seq = match &prev_ref.ref_type {
+                    RefType::Chr { seq } => seq,
+                    _ => unreachable!(),
+                };
                 Cow::Owned(dna::revcomp(
-                    &prev_ref.seq.as_ref().unwrap()[chrom_start..chrom_end],
+                    &prev_seq.as_ref().unwrap()[chrom_start..chrom_end],
                 ))
             }
         }
@@ -352,10 +375,6 @@ impl Index {
         println!("\t\tOcc\t{}", serialized_size(self.sa.occ()).unwrap());
         println!("\tTranscriptome\t{}", serialized_size(&self.txome).unwrap());
         println!(
-            "\t\tExon interval tree\t{}",
-            serialized_size(&self.txome.exon_to_tx).unwrap()
-        );
-        println!(
             "\t\tGene interval tree\t{}",
             serialized_size(&self.txome.gene_intervals).unwrap()
         );
@@ -388,13 +407,23 @@ pub struct Mem {
     pub len: usize,
 }
 
-/// A single reference (chromosome).
+/// A reference type.
+#[derive(Debug, Serialize, Deserialize)]
+pub enum RefType {
+    Chr { seq: Option<Vec<u8>> },
+    Tx { tx_idx: usize },
+}
+
+/// A single reference (chromosome or transcript).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ref {
     pub name: String,
-    pub seq: Option<Vec<u8>>,
+    pub ref_type: RefType,
     pub strand: bool,
     pub len: usize,
     pub start_idx: usize,
     pub end_idx: usize,
 }
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct NameStrand(String, bool);
