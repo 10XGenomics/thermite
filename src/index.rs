@@ -146,6 +146,7 @@ impl Index {
         Ok(Index { refs, sa, txome })
     }
 
+    #[cfg(feature = "transcriptome")]
     fn create_txome(
         ref_path: &str,
         annot_path: &str,
