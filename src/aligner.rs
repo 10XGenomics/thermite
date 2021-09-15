@@ -216,7 +216,8 @@ pub fn align_seed_hit<F: MatchFunc>(
                 // region of the genome to align to
                 let seq_start =
                     (hit.ref_idx.saturating_sub(read.len() + band_width)).max(aln_ref.start_idx);
-                let seq_end = (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
+                let seq_end =
+                    (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
                 let ref_seq = index.seq_slice(seq_start, seq_end);
 
                 let relative_hit = {
@@ -225,7 +226,8 @@ pub fn align_seed_hit<F: MatchFunc>(
                     h
                 };
 
-                let mut a = extend_left_right(&ref_seq, &relative_hit, read, swg, band_width, x_drop);
+                let mut a =
+                    extend_left_right(&ref_seq, &relative_hit, read, swg, band_width, x_drop);
                 a.ystart += seq_start;
                 a.yend += seq_start;
                 a
@@ -265,7 +267,7 @@ pub fn align_seed_hit<F: MatchFunc>(
                     primary: false,
                 }
             }
-        },
+        }
         RefType::Tx { tx_idx } => {
             let tx_hit = {
                 let mut h = hit.clone();
@@ -273,14 +275,7 @@ pub fn align_seed_hit<F: MatchFunc>(
                 h
             };
             let tx = &index.txome().txs[tx_idx];
-            let tx_aln = extend_left_right(
-                &tx.seq,
-                &tx_hit,
-                read,
-                swg,
-                band_width,
-                x_drop,
-            );
+            let tx_aln = extend_left_right(&tx.seq, &tx_hit, read, swg, band_width, x_drop);
 
             // lift to concatenated reference coordinates
             // tx alignment could be either forwards or reversed
@@ -295,7 +290,7 @@ pub fn align_seed_hit<F: MatchFunc>(
                 strand: tx.strand,
                 primary: false,
             }
-        },
+        }
     }
 }
 
@@ -336,7 +331,13 @@ pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment
             let curr_rank = rank_type(&curr);
 
             // favor exonic alignments
-            if aln.gx_aln.score.cmp(&curr.gx_aln.score).then(aln_rank.cmp(&curr_rank)) == Ordering::Greater {
+            if aln
+                .gx_aln
+                .score
+                .cmp(&curr.gx_aln.score)
+                .then(aln_rank.cmp(&curr_rank))
+                == Ordering::Greater
+            {
                 *curr = aln;
             }
             max_end = max_end.max(curr.gx_aln.yend);

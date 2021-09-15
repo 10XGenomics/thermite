@@ -257,21 +257,17 @@ pub fn build_sam_header(index: &Index) -> Result<sam::Header> {
     let sam_refs = index
         .refs()
         .into_iter()
-        .filter_map(|r| {
-            match r.ref_type {
-                RefType::Chr { .. } => {
-                    Some((
-                        r.name.to_owned(),
-                        sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32).expect(
-                            &format!(
-                                "Error in creating a SAM header reference sequence with name \"{}\".",
-                                r.name
-                            ),
-                        ),
-                    ))
-                },
-                _ => None,
-            }
+        .filter_map(|r| match r.ref_type {
+            RefType::Chr { .. } => Some((
+                r.name.to_owned(),
+                sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32).expect(
+                    &format!(
+                        "Error in creating a SAM header reference sequence with name \"{}\".",
+                        r.name
+                    ),
+                ),
+            )),
+            _ => None,
         })
         .collect();
     Ok(sam::Header::builder()

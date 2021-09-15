@@ -76,7 +76,9 @@ impl Index {
             name_to_ref.insert(NameStrand(name.to_owned(), true), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
-                ref_type: RefType::Chr { seq: Some(curr_seq) },
+                ref_type: RefType::Chr {
+                    seq: Some(curr_seq),
+                },
                 strand: true,
                 len: record.seq().len(),
                 start_idx,
@@ -144,7 +146,12 @@ impl Index {
         Ok(Index { refs, sa, txome })
     }
 
-    fn create_txome(ref_path: &str, annot_path: &str, name_to_ref: &HashMap<NameStrand, usize>, refs: &[Ref]) -> Result<Txome> {
+    fn create_txome(
+        ref_path: &str,
+        annot_path: &str,
+        name_to_ref: &HashMap<NameStrand, usize>,
+        refs: &[Ref],
+    ) -> Result<Txome> {
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
             genes: txome_genes,
