@@ -1,7 +1,7 @@
 # Test the Thermite aligner.
 
 # Path to the thermite executable.
-export PATH:=../target/debug:${PATH}
+export PATH:=../target/release:${PATH}
 
 dataset=test
 

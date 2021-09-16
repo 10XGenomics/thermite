@@ -36,12 +36,10 @@ jobs:
           rustfmt --version
       - name: Check rust formatting
         run: cargo fmt -- --check
-      - name: Run cargo check
-        run: cargo check --all-targets
-      - name: Run cargo build
-        run: cargo build
       - name: Run cargo test
         run: cargo test
+      - name: Run cargo build release
+        run: cargo build --release
       - name: Install py requirements
         run: pip install pysam
       - name: Run metric test
