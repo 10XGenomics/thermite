@@ -140,7 +140,7 @@ dependencies = [
 [[package]]
 name = "bio"
 version = "0.37.1"
-source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=optimize#773ae477fa359577b4ecfd73fb31f2712c7dcafc"
+source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=optimize#1e5885ceb6e3bf7aa0dfd929829c22c7417ecc69"
 dependencies = [
  "anyhow",
  "approx",
