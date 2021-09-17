@@ -265,7 +265,7 @@ impl Index {
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
-        let intervals = fmd.all_smems(query, min_seed_len);
+        let intervals = fmd.all_smems(query, min_seed_len, false, false);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -304,7 +304,7 @@ impl Index {
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
-        let intervals = fmd.all_smems(query, min_seed_len);
+        let intervals = fmd.all_smems(query, min_seed_len, false, false);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
