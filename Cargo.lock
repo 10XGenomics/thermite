@@ -140,7 +140,7 @@ dependencies = [
 [[package]]
 name = "bio"
 version = "0.37.1"
-source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=optimize#97c0d476154644c338eea9203f390602020adbd1"
+source = "git+https://github.com/sjackman/rust-bio?branch=sj/prefetch#4983f8ca47df7f00da0af0a5c83d9d7f3f0074f1"
 dependencies = [
  "anyhow",
  "approx",
@@ -1339,7 +1339,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bio 0.37.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "bio 0.37.1 (git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=optimize)",
+ "bio 0.37.1 (git+https://github.com/sjackman/rust-bio?branch=sj/prefetch)",
  "bio-types",
  "block-aligner",
  "clap 3.0.0-beta.2",
