@@ -27,6 +27,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi_term"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -129,6 +138,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "bio"
+version = "0.37.1"
+source = "git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=optimize#ea20d9efd0fd74910e6a1c73361cbf45104cbca3"
+dependencies = [
+ "anyhow",
+ "approx",
+ "bio-types",
+ "bit-set",
+ "bv",
+ "bytecount",
+ "csv",
+ "custom_derive",
+ "enum-map",
+ "fnv",
+ "fxhash",
+ "getset",
+ "itertools",
+ "itertools-num",
+ "lazy_static",
+ "multimap",
+ "ndarray",
+ "newtype_derive",
+ "num-integer",
+ "num-traits",
+ "ordered-float",
+ "petgraph",
+ "rand 0.7.3",
+ "regex",
+ "serde",
+ "serde_derive",
+ "statrs",
+ "strum",
+ "strum_macros",
+ "thiserror",
+ "triple_accel",
+ "vec_map",
+]
+
+[[package]]
 name = "bio-types"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -161,6 +209,16 @@ name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
+
+[[package]]
+name = "block-aligner"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec73b12458ae4003ab59e46d81d2c232eeaff36d293ac6a8392a1cb002c75c8a"
+dependencies = [
+ "cbindgen",
+ "rand 0.8.4",
+]
 
 [[package]]
 name = "bstr"
@@ -228,6 +286,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbindgen"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51e3973b165dc0f435831a9e426de67e894de532754ff7a3f307c03ee5dec7dc"
+dependencies = [
+ "clap 2.33.3",
+ "heck",
+ "indexmap",
+ "log",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -244,6 +321,21 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
+version = "2.33.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37e58ac78573c40708d45522f0d80fa2f01cc4f9b4e2bf749807255454312002"
+dependencies = [
+ "ansi_term",
+ "atty",
+ "bitflags",
+ "strsim 0.8.0",
+ "textwrap 0.11.0",
+ "unicode-width",
+ "vec_map",
+]
+
+[[package]]
+name = "clap"
 version = "3.0.0-beta.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bd1061998a501ee7d4b6d449020df3266ca3124b941ec56cf2005c3779ca142"
@@ -254,9 +346,9 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "os_str_bytes",
- "strsim",
+ "strsim 0.10.0",
  "termcolor",
- "textwrap",
+ "textwrap 0.12.1",
  "unicode-width",
  "vec_map",
 ]
@@ -618,6 +710,15 @@ name = "linear-map"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfae20f6b19ad527b550c223fddc3077a547fc70cda94b9b566575423fd303ee"
+
+[[package]]
+name = "log"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51b9bbe6c47d51fc3e1a9b945965946b4c44142ab8792c50835a980d362c2710"
+dependencies = [
+ "cfg-if",
+]
 
 [[package]]
 name = "lzma-sys"
@@ -1139,6 +1240,12 @@ dependencies = [
 
 [[package]]
 name = "strsim"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
+
+[[package]]
+name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
@@ -1209,6 +1316,15 @@ dependencies = [
 
 [[package]]
 name = "textwrap"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
+dependencies = [
+ "unicode-width",
+]
+
+[[package]]
+name = "textwrap"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "203008d98caf094106cfaba70acfed15e18ed3ddb7d94e49baec153a2b462789"
@@ -1222,9 +1338,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
- "bio",
+ "bio 0.37.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bio 0.37.1 (git+https://github.com/Daniel-Liu-c0deb0t/rust-bio?branch=optimize)",
  "bio-types",
- "clap",
+ "block-aligner",
+ "clap 3.0.0-beta.2",
  "libdivsufsort-rs",
  "needletail",
  "noodles",
@@ -1269,11 +1387,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
+name = "toml"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "transcriptome"
 version = "0.1.0"
 source = "git+https://github.com/10XDev/cellranger#0a5d2bfdbd51b783f7d0ac251a2328639e580db5"
 dependencies = [
- "bio",
+ "bio 0.37.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bio-types",
  "csv",
  "failure",

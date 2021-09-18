@@ -9,7 +9,7 @@ use std::convert::TryFrom;
 use std::io::Write;
 use std::{fmt, str};
 
-use crate::index::Index;
+use crate::index::{Index, RefType};
 use crate::txome::{AlnType, GenomeAlignment};
 
 /// Supported alignment output formats.
@@ -257,8 +257,8 @@ pub fn build_sam_header(index: &Index) -> Result<sam::Header> {
     let sam_refs = index
         .refs()
         .into_iter()
-        .map(|r| {
-            (
+        .filter_map(|r| match r.ref_type {
+            RefType::Chr { .. } => Some((
                 r.name.to_owned(),
                 sam::header::ReferenceSequence::new(r.name.to_owned(), r.len as i32).expect(
                     &format!(
@@ -266,7 +266,8 @@ pub fn build_sam_header(index: &Index) -> Result<sam::Header> {
                         r.name
                     ),
                 ),
-            )
+            )),
+            _ => None,
         })
         .collect();
     Ok(sam::Header::builder()

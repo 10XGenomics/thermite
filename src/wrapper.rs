@@ -43,6 +43,7 @@ impl ThermiteAligner {
             min_aln_score: 30,
             multimap_score_range: 1,
             intron_mode: false,
+            use_mmp: false,
         };
 
         let header_view = {

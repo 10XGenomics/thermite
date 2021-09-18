@@ -5,13 +5,14 @@ use anyhow::Result;
 
 use needletail::*;
 
-use bio::alphabets::{dna, Alphabet};
-use bio::data_structures::bwt::{bwt, less, Less, Occ, BWT};
-use bio::data_structures::fmindex::{FMDIndex, FMIndex};
+use bio::alphabets::dna;
 use bio::data_structures::interval_tree::IntervalTree;
-use bio::data_structures::suffix_array::{RawSuffixArray, SampledSuffixArray, SuffixArray};
 use bio::io::fasta::IndexedReader;
 use bio::utils::Interval;
+use bio_opt::alphabets::Alphabet;
+use bio_opt::data_structures::bwt::{bwt, less, Less, Occ, BWT};
+use bio_opt::data_structures::fmindex::{FMDIndex, FMIndex};
+use bio_opt::data_structures::suffix_array::{RawSuffixArray, SampledSuffixArray, SuffixArray};
 
 use bio_types::strand::ReqStrand;
 
@@ -59,11 +60,9 @@ impl Index {
         let mut refs = Vec::with_capacity(8);
         let mut seq = Vec::with_capacity(1024);
 
-        #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-        struct NameStrand(String, bool);
         let mut name_to_ref: HashMap<NameStrand, usize> = HashMap::new();
 
-        // concatenate all reference sequences
+        // concatenate all chromosome sequences
         while let Some(record) = ref_reader.next() {
             let record = record?;
             let name = str::from_utf8(record.id())?.split(' ').next().unwrap();
@@ -77,7 +76,9 @@ impl Index {
             name_to_ref.insert(NameStrand(name.to_owned(), true), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
-                seq: Some(curr_seq),
+                ref_type: RefType::Chr {
+                    seq: Some(curr_seq),
+                },
                 strand: true,
                 len: record.seq().len(),
                 start_idx,
@@ -92,7 +93,7 @@ impl Index {
             name_to_ref.insert(NameStrand(name.to_owned(), false), refs.len());
             refs.push(Ref {
                 name: name.to_owned(),
-                seq: None,
+                ref_type: RefType::Chr { seq: None },
                 strand: false,
                 len: record.seq().len(),
                 start_idx,
@@ -100,6 +101,38 @@ impl Index {
             });
         }
 
+        let txome = Self::create_txome(ref_path, annot_path, &name_to_ref, &refs)?;
+
+        // concatenate transcript sequences after chromosome sequences
+        for (i, tx) in txome.txs.iter().enumerate() {
+            // end index includes '$', length does not
+            let start_idx = seq.len();
+            seq.extend_from_slice(&tx.seq);
+            seq.push(b'$');
+            refs.push(Ref {
+                name: "".to_owned(),
+                ref_type: RefType::Tx { tx_idx: i },
+                strand: true,
+                len: tx.seq.len(),
+                start_idx,
+                end_idx: seq.len(),
+            });
+
+            let start_idx = seq.len();
+            let revcomp = dna::revcomp(&tx.seq);
+            seq.extend_from_slice(&revcomp);
+            seq.push(b'$');
+            refs.push(Ref {
+                name: "".to_owned(),
+                ref_type: RefType::Tx { tx_idx: i },
+                strand: false,
+                len: tx.seq.len(),
+                start_idx,
+                end_idx: seq.len(),
+            });
+        }
+
+        // construct FMD index
         let sa =
             cast_vec_i64_to_usize(divsufsort64(&seq).expect("Suffix array construction failed!"))
                 as RawSuffixArray;
@@ -107,11 +140,19 @@ impl Index {
         // use a subset of the required alphabet for FMD index
         let alpha = Alphabet::new(b"ACGNT");
         let less = less(&bwt, &alpha);
-        let occ = Occ::new(&bwt, occ_sampling_rate as u32, &alpha);
+        let occ = Occ::new(&bwt, occ_sampling_rate as u32);
         let sa = sa.sample(&seq, bwt, less, occ, sa_sampling_rate);
 
-        drop(seq);
+        Ok(Index { refs, sa, txome })
+    }
 
+    #[cfg(feature = "transcriptome")]
+    fn create_txome(
+        ref_path: &str,
+        annot_path: &str,
+        name_to_ref: &HashMap<NameStrand, usize>,
+        refs: &[Ref],
+    ) -> Result<Txome> {
         let mut ref_fai_reader = IndexedReader::from_file(&ref_path)?;
         let transcriptome::Transcriptome {
             genes: txome_genes,
@@ -131,8 +172,7 @@ impl Index {
             })
             .collect::<Vec<_>>();
 
-        let mut gene_intervals = vec![(sa.bwt().len(), 0); genes.len()];
-        let mut exon_to_tx = IntervalTree::new();
+        let mut gene_intervals = vec![(usize::MAX, 0); genes.len()];
         let err_msg = format!("Error in reading reference file {}", ref_path);
         let txs = txome_txs
             .into_iter()
@@ -179,9 +219,6 @@ impl Index {
                         };
                         let exon_tx_idx = tx.idx.0 as usize;
 
-                        exon_to_tx
-                            .insert(Interval::new(exon_start..exon_end).unwrap(), exon_tx_idx);
-
                         Exon {
                             start: exon_start as usize,
                             end: exon_end as usize,
@@ -212,26 +249,29 @@ impl Index {
                 .map(|(i, (start, end))| (Interval::new(start..end).unwrap(), i)),
         );
 
-        let txome = Txome {
+        Ok(Txome {
             genes,
             txs,
-            exon_to_tx,
             gene_intervals,
-        };
-
-        Ok(Index { refs, sa, txome })
+        })
     }
 
     /// Find all SMEMs for a query sequence.
     ///
     /// The MEMs use concatenated reference coordinates.
-    pub fn all_smems(&self, query: &[u8], min_seed_len: usize) -> Vec<Mem> {
+    pub fn all_smems(&self, query: &[u8], min_seed_len: usize, mmp: bool) -> Vec<Mem> {
         let mut mems = Vec::new();
         // creating the fmd index on the fly here is fast since the structs are just wrappers
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
-        let intervals = fmd.all_smems(query, min_seed_len);
+        let intervals = if mmp {
+            // TODO: fix MMP finding so it is fast
+            fmd.all_smems(query, min_seed_len, false, true, true, true)
+        } else {
+            // finding all SMEMs uses a slight heuristic to save some time
+            fmd.all_smems(query, min_seed_len, false, false, false, true)
+        };
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -239,6 +279,13 @@ impl Index {
             let mem_len = interval.2;
 
             for ref_idx in &forwards_idxs {
+                // TODO: don't ignore antisense transcript seed hits
+                let curr_ref = &self.refs[self.refs.partition_point(|x| x.end_idx <= *ref_idx)];
+                match curr_ref.ref_type {
+                    RefType::Tx { .. } if !curr_ref.strand => continue,
+                    _ => (),
+                }
+
                 mems.push(Mem {
                     query_idx,
                     ref_idx: *ref_idx,
@@ -263,7 +310,7 @@ impl Index {
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
-        let intervals = fmd.all_smems(query, min_seed_len);
+        let intervals = fmd.all_smems(query, min_seed_len, false, false, false, false);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -304,19 +351,29 @@ impl Index {
     pub fn seq_slice(&self, start: usize, end: usize) -> Cow<[u8]> {
         let ref_idx = self.refs.partition_point(|x| x.end_idx <= start);
         let curr_ref = &self.refs[ref_idx];
+        // don't worry about slicing a transcript sequence
+        let seq = match &curr_ref.ref_type {
+            RefType::Chr { seq } => seq,
+            _ => unreachable!(),
+        };
 
-        match &curr_ref.seq {
+        match seq {
             Some(s) => {
                 let chrom_start = start - curr_ref.start_idx;
                 let chrom_end = end - curr_ref.start_idx;
                 Cow::Borrowed(&s[chrom_start..chrom_end])
             }
             None => {
+                // the reference sequence before a revcomp sequence must be the corresponding forwards sequence
                 let prev_ref = &self.refs[ref_idx - 1];
                 let chrom_start = curr_ref.end_idx - 1 - end;
                 let chrom_end = curr_ref.end_idx - 1 - start;
+                let prev_seq = match &prev_ref.ref_type {
+                    RefType::Chr { seq } => seq,
+                    _ => unreachable!(),
+                };
                 Cow::Owned(dna::revcomp(
-                    &prev_ref.seq.as_ref().unwrap()[chrom_start..chrom_end],
+                    &prev_seq.as_ref().unwrap()[chrom_start..chrom_end],
                 ))
             }
         }
@@ -351,10 +408,6 @@ impl Index {
         println!("\t\tOcc\t{}", serialized_size(self.sa.occ()).unwrap());
         println!("\tTranscriptome\t{}", serialized_size(&self.txome).unwrap());
         println!(
-            "\t\tExon interval tree\t{}",
-            serialized_size(&self.txome.exon_to_tx).unwrap()
-        );
-        println!(
             "\t\tGene interval tree\t{}",
             serialized_size(&self.txome.gene_intervals).unwrap()
         );
@@ -387,13 +440,23 @@ pub struct Mem {
     pub len: usize,
 }
 
-/// A single reference (chromosome).
+/// A reference type.
+#[derive(Debug, Serialize, Deserialize)]
+pub enum RefType {
+    Chr { seq: Option<Vec<u8>> },
+    Tx { tx_idx: usize },
+}
+
+/// A single reference (chromosome or transcript).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ref {
     pub name: String,
-    pub seq: Option<Vec<u8>>,
+    pub ref_type: RefType,
     pub strand: bool,
     pub len: usize,
     pub start_idx: usize,
     pub end_idx: usize,
 }
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct NameStrand(String, bool);

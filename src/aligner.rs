@@ -8,7 +8,7 @@ use bio::alignment::pairwise::{MatchFunc, Scoring};
 use bio::alignment::{Alignment, AlignmentMode, AlignmentOperation};
 use bio::utils::Interval;
 
-use std::cmp;
+use std::cmp::{self, Ordering};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, BufWriter};
@@ -119,12 +119,17 @@ pub fn align_reads_from_file(
     Ok(())
 }
 
+pub const MATCH: i32 = 1;
+pub const MISMATCH: i32 = -1;
+pub const GAP_OPEN: i32 = -2;
+pub const GAP_EXTEND: i32 = -2;
+
 /// Attempt to align a single read and return the alignments that are found.
 pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<GenomeAlignment> {
     // always make sure reads are uppercase
     let read = read.to_ascii_uppercase();
 
-    let mems = index.all_smems(&read, align_opts.min_seed_len);
+    let mems = index.all_smems(&read, align_opts.min_seed_len, align_opts.use_mmp);
 
     let mut gx_alns = Vec::with_capacity(4);
     let min_aln_score = cmp::max(
@@ -133,22 +138,15 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
     );
     let mut max_aln_score = min_aln_score;
     // saturating sub just in case floating point error
-    // assumes unit scores
-    let mut band_width = read.len().saturating_sub(min_aln_score as usize);
+    let mut band_width =
+        read.len().saturating_sub(min_aln_score as usize) / ((-GAP_EXTEND) as usize);
     let mut x_drop = read.len().saturating_sub(min_aln_score as usize);
 
-    let scoring = Scoring::from_scores(-1, -1, 1, -1);
+    let scoring = Scoring::from_scores(GAP_OPEN, GAP_EXTEND, MATCH, MISMATCH);
     let mut swg = SwgExtend::new(band_width, scoring);
 
     for hit in &mems {
         let gx_aln = align_seed_hit(index, &read, hit, &mut swg, band_width, x_drop as i32);
-
-        if !align_opts.intron_mode {
-            match gx_aln.aln_type {
-                AlnType::Exonic { .. } => (),
-                _ => continue,
-            }
-        }
 
         // use the running max alignment score to discard low scoring alignments early
         if gx_aln.gx_aln.score < align_opts.min_aln_score
@@ -162,7 +160,8 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
         band_width = cmp::min(
             band_width,
             (read.len() + align_opts.multimap_score_range)
-                .saturating_sub(gx_aln.gx_aln.score as usize),
+                .saturating_sub(gx_aln.gx_aln.score as usize)
+                / ((-GAP_EXTEND) as usize),
         );
         x_drop = cmp::min(
             x_drop,
@@ -180,6 +179,13 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
 
     let mut gx_alns = filter_overlapping(gx_alns);
 
+    if !align_opts.intron_mode {
+        gx_alns.retain(|gx_aln| match gx_aln.aln_type {
+            AlnType::Exonic { .. } => true,
+            _ => false,
+        });
+    }
+
     gx_alns.sort_by_key(|aln| -aln.gx_aln.score);
     // pick an arbitrary max scoring alignment as the primary alignment
     if let Some(gx_aln) = gx_alns.first_mut() {
@@ -191,8 +197,6 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
 
 /// Align a single seed hit and return a GenomeAlignment.
 ///
-/// Tries to align to the genome and the transcriptome,
-/// returning the alignment that is better.
 /// Determines whether the alignment is exonic, intronic,
 /// or intergenic.
 pub fn align_seed_hit<F: MatchFunc>(
@@ -205,108 +209,85 @@ pub fn align_seed_hit<F: MatchFunc>(
 ) -> GenomeAlignment {
     let aln_ref = index.idx_to_ref(hit.ref_idx).0;
 
-    // extend seed hit in genome
-    let gx_aln = {
-        // region of the genome to align to
-        // TODO: use smaller region in genome
-        let seq_start =
-            (hit.ref_idx.saturating_sub(read.len() + band_width)).max(aln_ref.start_idx);
-        let seq_end = (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
-        let ref_seq = index.seq_slice(seq_start, seq_end);
+    match aln_ref.ref_type {
+        RefType::Chr { .. } => {
+            // extend seed hit in genome
+            let gx_aln = {
+                // region of the genome to align to
+                let seq_start =
+                    (hit.ref_idx.saturating_sub(read.len() + band_width)).max(aln_ref.start_idx);
+                let seq_end =
+                    (hit.ref_idx + hit.len + read.len() + band_width).min(aln_ref.end_idx - 1);
+                let ref_seq = index.seq_slice(seq_start, seq_end);
 
-        let relative_hit = {
-            let mut h = hit.clone();
-            h.ref_idx -= seq_start;
-            h
-        };
+                let relative_hit = {
+                    let mut h = hit.clone();
+                    h.ref_idx -= seq_start;
+                    h
+                };
 
-        let mut a = extend_left_right(&ref_seq, &relative_hit, read, swg, band_width, x_drop);
-        a.ystart += seq_start;
-        a.yend += seq_start;
-        a
-    };
+                let mut a =
+                    extend_left_right(&ref_seq, &relative_hit, read, swg, band_width, x_drop);
+                a.ystart += seq_start;
+                a.yend += seq_start;
+                a
+            };
 
-    // intersect seed hit with exons/transcripts
-    // find the one best alignment because they are all from the same gene
-    let mut best_tx_aln: Option<(usize, Alignment)> = None;
-    let tx_idxs_iter = index
-        .txome()
-        .exon_to_tx
-        .find(Interval::new(hit.ref_idx..hit.ref_idx + hit.len).unwrap())
-        .map(|e| *e.data());
-    for tx_idx in tx_idxs_iter {
-        let mut tx_seed = lift_mem_to_tx(&hit, &index.txome().txs[tx_idx]);
-        extend_seed_match(&index.txome().txs[tx_idx].seq, &mut tx_seed, read);
-        let tx_aln = extend_left_right(
-            &index.txome().txs[tx_idx].seq,
-            &tx_seed,
-            read,
-            swg,
-            band_width,
-            x_drop,
-        );
-        let tx_aln_score = tx_aln.score;
-        if best_tx_aln.is_none() || tx_aln_score > best_tx_aln.as_ref().unwrap().1.score {
-            best_tx_aln = Some((tx_idx, tx_aln));
-        }
+            // check if genome alignment intersects any genes
+            let gene_idxs = index
+                .txome()
+                .gene_intervals
+                .find(Interval::new(gx_aln.ystart..gx_aln.yend).unwrap())
+                .map(|e| *e.data())
+                .collect::<Vec<_>>();
+            let gx_aln = concat_to_chr_aln(index, gx_aln);
 
-        // cannot do better than exact match
-        let match_score = 1;
-        if tx_aln_score >= (read.len() * match_score) as i32 {
-            break;
-        }
-    }
+            let ref_name = aln_ref.name.to_owned();
+            let strand = aln_ref.strand;
 
-    let ref_name = aln_ref.name.clone();
-    let strand = aln_ref.strand;
-
-    if best_tx_aln.is_some() && best_tx_aln.as_ref().unwrap().1.score >= gx_aln.score {
-        // spliced alignment to txome is better
-        let (tx_idx, tx_aln) = best_tx_aln.unwrap();
-
-        // lift to concatenated reference coordinates
-        // tx alignment could be either forwards or reversed
-        let lifted_aln = lift_tx_to_gx(&tx_aln, &index.txome().txs[tx_idx]);
-        // convert concatenated genome coordinates to coordinates within some chromosome
-        // make sure gx alignment is always relative to forwards strand
-        let gx_aln = concat_to_chr_aln(index, lifted_aln);
-        GenomeAlignment {
-            gx_aln,
-            aln_type: AlnType::Exonic { tx_aln, tx_idx },
-            ref_name,
-            strand,
-            primary: false,
-        }
-    } else {
-        // unspliced alignment is better
-        // check if genome alignment intersects any genes
-        let gene_idxs = index
-            .txome()
-            .gene_intervals
-            .find(Interval::new(gx_aln.ystart..gx_aln.yend).unwrap())
-            .map(|e| *e.data())
-            .collect::<Vec<_>>();
-        let gx_aln = concat_to_chr_aln(index, gx_aln);
-
-        if gene_idxs.is_empty() {
-            // intergenic
-            GenomeAlignment {
-                gx_aln,
-                aln_type: AlnType::Intergenic,
-                ref_name,
-                strand,
-                primary: false,
+            if gene_idxs.is_empty() {
+                // intergenic
+                GenomeAlignment {
+                    gx_aln,
+                    aln_type: AlnType::Intergenic,
+                    ref_name,
+                    strand,
+                    primary: false,
+                }
+            } else {
+                // intronic
+                // only choose one gene idx for simplicity
+                GenomeAlignment {
+                    gx_aln,
+                    aln_type: AlnType::Intronic {
+                        gene_idx: gene_idxs[0],
+                    },
+                    ref_name,
+                    strand,
+                    primary: false,
+                }
             }
-        } else {
-            // intronic
-            // only choose one gene idx for simplicity
+        }
+        RefType::Tx { tx_idx } => {
+            let tx_hit = {
+                let mut h = hit.clone();
+                h.ref_idx -= aln_ref.start_idx;
+                h
+            };
+            let tx = &index.txome().txs[tx_idx];
+            let tx_aln = extend_left_right(&tx.seq, &tx_hit, read, swg, band_width, x_drop);
+
+            // lift to concatenated reference coordinates
+            // tx alignment could be either forwards or reversed
+            let lifted_aln = lift_tx_to_gx(&tx_aln, tx);
+            // convert concatenated genome coordinates to coordinates within some chromosome
+            // make sure gx alignment is always relative to forwards strand
+            let gx_aln = concat_to_chr_aln(index, lifted_aln);
             GenomeAlignment {
                 gx_aln,
-                aln_type: AlnType::Intronic {
-                    gene_idx: gene_idxs[0],
-                },
-                ref_name,
-                strand,
+                aln_type: AlnType::Exonic { tx_aln, tx_idx },
+                ref_name: tx.chrom.to_owned(),
+                strand: tx.strand,
                 primary: false,
             }
         }
@@ -317,6 +298,14 @@ pub fn align_seed_hit<F: MatchFunc>(
 pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment> {
     if alns.is_empty() {
         return alns;
+    }
+
+    fn rank_type(aln: &GenomeAlignment) -> usize {
+        match aln.aln_type {
+            AlnType::Exonic { .. } => 3,
+            AlnType::Intronic { .. } => 2,
+            AlnType::Intergenic => 1,
+        }
     }
 
     alns.sort_by(|a, b| {
@@ -338,7 +327,17 @@ pub fn filter_overlapping(mut alns: Vec<GenomeAlignment>) -> Vec<GenomeAlignment
             res.push(aln);
         } else {
             let curr = res.last_mut().unwrap();
-            if aln.gx_aln.score > curr.gx_aln.score {
+            let aln_rank = rank_type(&aln);
+            let curr_rank = rank_type(&curr);
+
+            // favor exonic alignments
+            if aln
+                .gx_aln
+                .score
+                .cmp(&curr.gx_aln.score)
+                .then(aln_rank.cmp(&curr_rank))
+                == Ordering::Greater
+            {
                 *curr = aln;
             }
             max_end = max_end.max(curr.gx_aln.yend);
@@ -382,9 +381,7 @@ pub fn extend_left_right<F: MatchFunc>(
         hit.query_idx - left_aln.xend,
         hit.query_idx + hit.len + right_aln.xend,
     );
-    // assuming unit scores
-    let match_score = 1;
-    let score = left_aln.score + (match_score * (hit.len as i32)) + right_aln.score;
+    let score = left_aln.score + (MATCH * (hit.len as i32)) + right_aln.score;
     let ops = left_aln
         .operations
         .into_iter()
@@ -461,6 +458,8 @@ pub struct AlignOpts {
     pub multimap_score_range: usize,
     /// Whether to output intronic and intergenic alignments.
     pub intron_mode: bool,
+    /// Whether to use Maximal Mappable Prefixes.
+    pub use_mmp: bool,
 }
 
 #[cfg(test)]
@@ -602,7 +601,7 @@ mod test {
 
     #[test]
     fn test_extend_left_right() {
-        let scoring = Scoring::from_scores(-1, -1, 1, -1);
+        let scoring = Scoring::from_scores(GAP_OPEN, GAP_EXTEND, MATCH, MISMATCH);
         let mut swg = SwgExtend::new(4, scoring);
         let x = b"GGGGCCTTGAGTAA";
         let y = b"AAAAAAACCTTGGGTTTTTTTT";
