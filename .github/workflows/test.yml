@@ -27,8 +27,8 @@ jobs:
       - name: Install cargo/rustc
         run: |
           case $(rustc --version) in
-            "rustc 1.53.0"*) ;;
-            *) rustup default 1.53.0
+            "rustc 1.54.0"*) ;;
+            *) rustup default 1.54.0
                ;;
           esac
           rustup component add rustfmt
