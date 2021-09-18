@@ -129,7 +129,7 @@ pub fn align_read(index: &Index, read: &[u8], align_opts: &AlignOpts) -> Vec<Gen
     // always make sure reads are uppercase
     let read = read.to_ascii_uppercase();
 
-    let mems = index.all_smems(&read, align_opts.min_seed_len);
+    let mems = index.all_smems(&read, align_opts.min_seed_len, align_opts.use_mmp);
 
     let mut gx_alns = Vec::with_capacity(4);
     let min_aln_score = cmp::max(
@@ -458,6 +458,8 @@ pub struct AlignOpts {
     pub multimap_score_range: usize,
     /// Whether to output intronic and intergenic alignments.
     pub intron_mode: bool,
+    /// Whether to use Maximal Mappable Prefixes.
+    pub use_mmp: bool,
 }
 
 #[cfg(test)]

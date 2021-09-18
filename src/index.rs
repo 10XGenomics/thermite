@@ -259,13 +259,17 @@ impl Index {
     /// Find all SMEMs for a query sequence.
     ///
     /// The MEMs use concatenated reference coordinates.
-    pub fn all_smems(&self, query: &[u8], min_seed_len: usize) -> Vec<Mem> {
+    pub fn all_smems(&self, query: &[u8], min_seed_len: usize, mmp: bool) -> Vec<Mem> {
         let mut mems = Vec::new();
         // creating the fmd index on the fly here is fast since the structs are just wrappers
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
-        let intervals = fmd.all_smems(query, min_seed_len, true, true);
+        let intervals = if mmp {
+            fmd.all_smems(query, min_seed_len, false, true, true)
+        } else {
+            fmd.all_smems(query, min_seed_len, false, false, false)
+        };
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);
@@ -304,7 +308,7 @@ impl Index {
         let fm = FMIndex::new(self.sa.bwt(), self.sa.less(), self.sa.occ());
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
-        let intervals = fmd.all_smems(query, min_seed_len, false, false);
+        let intervals = fmd.all_smems(query, min_seed_len, false, false, false);
 
         for interval in intervals {
             let forwards_idxs = interval.0.forward().occ(&self.sa);

@@ -77,6 +77,7 @@ fn main() {
                     min_aln_score: align_opts.min_aln_score,
                     multimap_score_range: align_opts.multimap_score_range,
                     intron_mode: align_opts.intron_mode,
+                    use_mmp: align_opts.use_mmp,
                 },
             )
             .unwrap();
@@ -130,6 +131,9 @@ pub struct Align {
     /// Whether to output intronic or intergenic alignments
     #[clap(long)]
     pub intron_mode: bool,
+    /// Whether to use Maximal Mappable Prefixes
+    #[clap(long)]
+    pub use_mmp: bool,
 }
 
 #[derive(Debug, Clap)]
