@@ -266,9 +266,11 @@ impl Index {
         // safe because we only align nucleotides
         let fmd = unsafe { FMDIndex::from_fmindex_unchecked(fm) };
         let intervals = if mmp {
+            // TODO: fix MMP finding so it is fast
             fmd.all_smems(query, min_seed_len, false, true, true, true)
         } else {
-            fmd.all_smems(query, min_seed_len, false, false, false, false)
+            // finding all SMEMs uses a slight heuristic to save some time
+            fmd.all_smems(query, min_seed_len, false, false, false, true)
         };
 
         for interval in intervals {
